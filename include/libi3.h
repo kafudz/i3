@@ -14,8 +14,11 @@
 
 #include <stdbool.h>
 #include <stdarg.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <xcb/xcb.h>
 #include <xcb/xproto.h>
 #include <xcb/xcb_keysyms.h>
@@ -161,8 +164,9 @@ char *sstrndup(const char *str, size_t size);
 int sasprintf(char **strp, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 /**
- * Wrapper around correct write which returns -1 (meaning that
- * write failed) or count (meaning that all bytes were written)
+ * Wrapper around write(2) which keeps writing until all count bytes were
+ * written. Returns -1 if write failed (errno remains set) or count (meaning
+ * that all bytes were written).
  *
  */
 ssize_t writeall(int fd, const void *buf, size_t count);
@@ -313,11 +317,18 @@ int ipc_send_message(int sockfd, const uint32_t message_size,
  * Reads a message from the given socket file descriptor and stores its length
  * (reply_length) as well as a pointer to its contents (reply).
  *
+ * message_type may be NULL if the caller is not interested in the type.
+ *
  * Returns -1 when read() fails, errno will remain.
- * Returns -2 when the IPC protocol is violated (invalid magic, unexpected
- * message type, EOF instead of a message). Additionally, the error will be
- * printed to stderr.
+ * Returns -2 on EOF, i.e. the peer closed the connection before sending a
+ * message.
+ * Returns -3 when the IPC protocol is violated (invalid magic, EOF in the
+ * middle of a message). Additionally, the error will be logged with ELOG().
  * Returns 0 on success.
+ *
+ * Callers should initialize *reply to NULL and free() it regardless of the
+ * return value: after a failure in the middle of the payload, it may already
+ * have been allocated.
  *
  */
 int ipc_recv_message(int sockfd, uint32_t *message_type,
@@ -346,11 +357,14 @@ gchar *g_utf8_make_valid(const gchar *str, gssize len);
  * NOTE that get_colorpixel() does _NOT_ check the given color code for validity.
  * This has to be done by the caller.
  *
- * NOTE that this function may in the future rely on a global xcb_connection_t
- * variable called 'conn' to be present.
+ * NOTE that this function relies on the global 'root_screen' and, on screens
+ * which are not true-color, on the global xcb_connection_t 'conn' (it then
+ * talks to X11 and caches the result). It also reads the string it is given,
+ * so it must not be declared with __attribute__((const)) or ((pure)): the
+ * compiler could then drop or reorder the writes which build the string.
  *
  */
-uint32_t get_colorpixel(const char *hex) __attribute__((const));
+uint32_t get_colorpixel(const char *hex);
 
 #ifndef HAVE_STRNDUP
 /**
