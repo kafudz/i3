@@ -1391,20 +1391,21 @@ void clean_xcb(void) {
  */
 void get_atoms(void) {
     xcb_intern_atom_reply_t *reply;
-    
-    /* CRITICAL: Trailing backslashes (\) are required for multi-line macros */
-#define ATOM_DO(name)                                                          \
-    do {                                                                       \
-        reply = xcb_intern_atom_reply(xcb_connection, atom_cookies[name], NULL); \
-        if (reply == NULL) {                                                   \
-            ELOG("Could not get atom %s\n", #name);                            \
-            exit(EXIT_FAILURE);                                                \
-        }                                                                      \
-        atoms[name] = reply->atom;                                             \
-        free(reply);                                                           \
-    } while (0)
+
+#define ATOM_DO(name)                                                           \
+    do {                                                                        \
+        reply = xcb_intern_atom_reply(                                           \
+            xcb_connection, atom_cookies[name], NULL);                          \
+        if (reply == NULL) {                                                    \
+            ELOG("Could not get atom %s\n", #name);                             \
+            exit(EXIT_FAILURE);                                                 \
+        }                                                                       \
+        atoms[name] = reply->atom;                                              \
+        free(reply);                                                            \
+    } while (0);
 
 #include "xcb_atoms.def"
+
     DLOG("Got atoms\n");
 }
 
