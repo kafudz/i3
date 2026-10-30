@@ -46,4 +46,3 @@ ninja
 ```
 · This is a personal fork — no support, no guarantees.
 · For general i3 usage, refer to the official website and docs.
-· For contributing to upstream i3, see CONTRIBUTING.md.
