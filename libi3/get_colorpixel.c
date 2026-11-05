@@ -56,7 +56,10 @@ uint32_t get_colorpixel(const char *hex) {
     /* Lookup this colorpixel in the cache */
     struct Colorpixel *colorpixel;
     SLIST_FOREACH (colorpixel, &(colorpixels), colorpixels) {
-        if (strcmp(colorpixel->hex, hex) == 0) {
+        /* The cache only stores "#rrggbb" (the alpha channel is not used when
+         * allocating a color from the colormap), so compare only that part;
+         * otherwise "#rrggbbaa" lookups would never hit the cache. */
+        if (strncmp(colorpixel->hex, hex, 7) == 0) {
             return colorpixel->pixel;
         }
     }

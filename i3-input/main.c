@@ -92,7 +92,6 @@ static uint8_t *concat_strings(char **glyphs, int max) {
     uint8_t *output = scalloc(max + 1, 4);
     uint8_t *walk = output;
     for (int c = 0; c < max; c++) {
-        printf("at %c\n", glyphs[c][0]);
         /* if the first byte is 0, this has to be UCS2 */
         if (glyphs[c][0] == '\0') {
             memcpy(walk, glyphs[c], 2);
@@ -102,7 +101,6 @@ static uint8_t *concat_strings(char **glyphs, int max) {
             walk += strlen(glyphs[c]);
         }
     }
-    printf("output = %s\n", (char *)output);
     return output;
 }
 

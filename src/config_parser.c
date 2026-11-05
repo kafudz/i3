@@ -640,6 +640,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
 
     FILE *fstr;
     if ((fstr = fdopen(fd, "r")) == NULL) {
+        close(fd);
         return PARSE_FILE_FAILED;
     }
 
@@ -653,6 +654,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
     char buffer[4096], key[512], value[4096], *continuation = NULL;
     bool invalid_sets = false;
     char *buf = scalloc(stbuf.st_size + 1, 1);
+    size_t buf_len = 0;
     while (!feof(fstr)) {
         if (!continuation) {
             continuation = buffer;
@@ -662,9 +664,11 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
                 break;
             }
             fclose(fstr);
+            free(buf);
             return PARSE_FILE_FAILED;
         }
-        if (buffer[strlen(buffer) - 1] != '\n' && !feof(fstr)) {
+        const size_t buffer_len = strlen(buffer);
+        if (buffer_len > 0 && buffer[buffer_len - 1] != '\n' && !feof(fstr)) {
             ELOG("Your line continuation is too long, it exceeds %zd bytes\n", sizeof(buffer));
         }
 
@@ -683,7 +687,17 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
             continuation = NULL;
         }
 
-        strcpy(buf + strlen(buf), buffer);
+        /* The file might have grown since we called fstat(2), so never write
+         * past the end of the buffer we allocated for it. */
+        const size_t append_len = strlen(buffer);
+        if (buf_len + append_len > (size_t)stbuf.st_size) {
+            ELOG("Config file %s changed while it was being read, aborting.\n", f);
+            fclose(fstr);
+            free(buf);
+            return PARSE_FILE_FAILED;
+        }
+        memcpy(buf + buf_len, buffer, append_len + 1);
+        buf_len += append_len;
 
         /* Skip comments and empty lines. */
         if (skip_line || comment) {
@@ -849,6 +863,10 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
  */
 parse_file_result_t parse_file(struct parser_ctx *ctx, const char *f, IncludedFile *included_file) {
     char *old_dir = getcwd(NULL, 0);
+    if (old_dir == NULL) {
+        ELOG("getcwd() failed: %s\n", strerror(errno));
+        return PARSE_FILE_FAILED;
+    }
 
     parse_file_result_t result = parse_file_inner(ctx, f, included_file);
 
