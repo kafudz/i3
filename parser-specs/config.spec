@@ -561,6 +561,7 @@ state BAR:
   'launcher_width'         -> BAR_LAUNCHER_WIDTH
   'launcher_border'        -> BAR_LAUNCHER_BORDER
   'launcher_separators'    -> BAR_LAUNCHER_SEPARATORS
+  'launcher_opacity'       -> BAR_LAUNCHER_OPACITY
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
   'strip_workspace_numbers' -> BAR_STRIP_WORKSPACE_NUMBERS
@@ -700,6 +701,10 @@ state BAR_LAUNCHER_BORDER_PX:
       ->
   end
       -> call cfg_bar_launcher_border(&width); BAR
+
+state BAR_LAUNCHER_OPACITY:
+  opacity = number
+      -> call cfg_bar_launcher_opacity(&opacity); BAR
 
 state BAR_LAUNCHER_SEPARATORS:
   value = word

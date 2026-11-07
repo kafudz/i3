@@ -408,6 +408,12 @@ static int config_integer_cb(void *params_, long long val) {
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_opacity")) {
+        DLOG("launcher_opacity = %lld\n", val);
+        config.launcher_opacity = val;
+        return 1;
+    }
+
     if (!strcmp(cur_key, "launcher_border")) {
         DLOG("launcher_border = %lld\n", val);
         config.launcher_border = val;

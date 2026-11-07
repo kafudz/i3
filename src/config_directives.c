@@ -952,6 +952,10 @@ CFGFUN(bar_launcher_border, const long width) {
     current_bar->launcher_border = width;
 }
 
+CFGFUN(bar_launcher_opacity, const long opacity) {
+    current_bar->launcher_opacity = opacity;
+}
+
 CFGFUN(bar_launcher_separators, const char *value) {
     current_bar->launcher_separators = boolstr(value);
 }
@@ -979,6 +983,7 @@ CFGFUN(bar_start) {
     current_bar->tray_padding = 2;
     current_bar->modifier = XCB_KEY_BUT_MASK_MOD_4;
     current_bar->launcher_border = 1;
+    current_bar->launcher_opacity = 100;
     current_bar->launcher_separators = true;
 }
 

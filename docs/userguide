@@ -1967,7 +1967,12 @@ launcher_lines <number>
 launcher_width <number> [px]
 launcher_border <number> [px]
 launcher_separators yes|no
+launcher_opacity <percent>
 -----------------------------------
+
+The opacity of the whole list (+launcher_opacity+, 1 to 100, default 100) is
+applied by the compositing manager, e.g. picom, and needs a dmenu with +-op+.
+Without a compositor it has no effect.
 
 *Example*:
 -----------------------------------
@@ -1978,6 +1983,7 @@ bar {
     launcher_width 400 px
     launcher_border 2 px
     launcher_separators yes
+    launcher_opacity 90
 }
 -----------------------------------
 

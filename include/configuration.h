@@ -366,6 +366,10 @@ struct Barconfig {
     int launcher_border;
     bool launcher_separators;
 
+    /** Opacity of the launcher's list in percent (default: 100). Needs a
+     * compositing manager. Configuration option is 'launcher_opacity'. */
+    int launcher_opacity;
+
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'
      * but we invert the bool to get the correct default when initializing with
      * zero. */
