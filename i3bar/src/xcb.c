@@ -12,11 +12,13 @@
 #include <err.h>
 #include <errno.h>
 #include <ev.h>
+#include <fcntl.h>
 #include <i3/ipc.h>
 #include <signal.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include <xcb/xcb_aux.h>
@@ -553,7 +555,12 @@ static ev_child launcher_watcher;
  * cancelled it or because we closed it with a second click. */
 static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
     ev_child_stop(loop, w);
-    DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
+    if (WIFEXITED(w->rstatus) && WEXITSTATUS(w->rstatus) != 0) {
+        /* Exit status 1 is normal if the user cancelled the menu. */
+        DLOG("Launcher (pid %d) exited with status %d\n", (int)w->rpid, WEXITSTATUS(w->rstatus));
+    } else {
+        DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
+    }
     launcher_pid = -1;
 }
 
@@ -575,8 +582,8 @@ static const int launcher_default_width_px = 300;
 static char *launcher_dmenu_command(void) {
     const char *font = config.launcher_font ? config.launcher_font : launcher_default_font;
     /* The font ends up inside single quotes in a shell command line. */
-    if (strchr(font, '\'') != NULL) {
-        ELOG("Ignoring launcher_font \"%s\": it must not contain a single quote\n", font);
+    if (strpbrk(font, "'\"`$\\") != NULL) {
+        ELOG("Ignoring launcher_font \"%s\": it must not contain any of ' \" ` $ \\\n", font);
         font = launcher_default_font;
     }
     const int lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
@@ -592,6 +599,54 @@ static char *launcher_dmenu_command(void) {
               MAX(launcher_button_width(), width),
               (config.position != POS_TOP ? " -b" : ""));
     return cmd;
+}
+
+/*
+ * Fallback dmenu command line for a dmenu which does not support the
+ * geometry options: a plain full-width list at the screen edge. The list then
+ * covers the bar, but at least the launcher works.
+ *
+ * The caller has to free() the result.
+ */
+static char *launcher_plain_dmenu_command(void) {
+    const char *font = config.launcher_font ? config.launcher_font : launcher_default_font;
+    if (strpbrk(font, "'\"`$\\") != NULL) {
+        font = launcher_default_font;
+    }
+    const int lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
+
+    char *cmd;
+    sasprintf(&cmd, "dmenu -i -l %d -fn '%s'%s", lines, font,
+              (config.position != POS_TOP ? " -b" : ""));
+    return cmd;
+}
+
+/*
+ * Returns false if the dmenu in $PATH is known not to understand the options
+ * we use for positioning it (-P, -x, -y, -z). "-v" is placed last: a dmenu
+ * with these options reaches it and prints its version without touching X,
+ * while any other dmenu rejects an earlier option with its usage message.
+ * Only called in the launcher's own child process.
+ */
+static bool dmenu_supports_geometry(void) {
+    const pid_t probe = fork();
+    if (probe == -1) {
+        return true; /* can't tell, assume that it works */
+    }
+    if (probe == 0) {
+        const int fd = open("/dev/null", O_RDWR);
+        if (fd >= 0) {
+            dup2(fd, STDOUT_FILENO);
+            dup2(fd, STDERR_FILENO);
+        }
+        execlp("dmenu", "dmenu", "-P", "-x", "0", "-y", "0", "-z", "1", "-v", (char *)NULL);
+        _exit(127);
+    }
+    int status = 0;
+    if (waitpid(probe, &status, 0) != probe) {
+        return true;
+    }
+    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
 /*
@@ -616,23 +671,36 @@ static void toggle_launcher(void) {
 
     /* Build the command line before fork(): no allocations in the child. */
     char *dmenu_command = launcher_dmenu_command();
+    char *plain_dmenu_command = launcher_plain_dmenu_command();
     DLOG("Starting launcher with dmenu command: %s\n", dmenu_command);
 
     const pid_t pid = fork();
     if (pid == -1) {
         ELOG("Could not fork() to start the launcher: %s\n", strerror(errno));
         free(dmenu_command);
+        free(plain_dmenu_command);
         return;
     }
     if (pid == 0) {
-        /* Child: own session/process group, default SIGPIPE disposition. */
+        /* Child: own session/process group, default signal dispositions (the
+         * event loop's SIGCHLD handler must not run for our probe below). */
         setsid();
         signal(SIGPIPE, SIG_DFL);
-        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", dmenu_command, (char *)NULL);
+        signal(SIGCHLD, SIG_DFL);
+        const char *command = dmenu_command;
+        if (!dmenu_supports_geometry()) {
+            ELOG("Your dmenu does not support -P/-x/-y/-z, so the launcher list cannot be "
+                 "placed above the button. Install a dmenu with these options "
+                 "(github.com/kafudz/dmenu, branch feature/geometry). Using: %s\n",
+                 plain_dmenu_command);
+            command = plain_dmenu_command;
+        }
+        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", command, (char *)NULL);
         ELOG("Could not execute i3-dmenu-desktop: %s\n", strerror(errno));
         _exit(EXIT_FAILURE);
     }
     free(dmenu_command);
+    free(plain_dmenu_command);
 
     launcher_pid = pid;
     ev_child_init(&launcher_watcher, launcher_exited_cb, pid, 0);
