@@ -10,11 +10,14 @@
 #include "common.h"
 
 #include <err.h>
+#include <errno.h>
 #include <ev.h>
 #include <i3/ipc.h>
+#include <signal.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_cursor.h>
@@ -522,11 +525,58 @@ static int predict_button_width(int name_width) {
                logical_px(config.ws_min_width));
 }
 
-/* Command sent to i3 when the launcher button is clicked. i3 spawns it, so
- * i3bar does not need to care about forking or reaping children. */
-static const char *launcher_command = "exec --no-startup-id i3-dmenu-desktop";
-
 static i3String *launcher_label = NULL;
+
+/* The running launcher (i3-dmenu-desktop), or -1 if it is not running. */
+static pid_t launcher_pid = -1;
+static ev_child launcher_watcher;
+
+/* Called when the launcher exited, either because the user picked an entry,
+ * cancelled it or because we closed it with a second click. */
+static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
+    ev_child_stop(loop, w);
+    DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
+    launcher_pid = -1;
+}
+
+/*
+ * Starts i3-dmenu-desktop, or closes it again if it is already running.
+ *
+ * The launcher is started in its own session, so that on the second click we
+ * can terminate the whole process group, which includes the dmenu that
+ * i3-dmenu-desktop spawned (killing only the perl script would leave dmenu
+ * behind). Only a launcher started by us is ever closed, never an unrelated
+ * dmenu.
+ *
+ */
+static void toggle_launcher(void) {
+    if (launcher_pid > 0) {
+        DLOG("Closing launcher (pid %d)\n", (int)launcher_pid);
+        if (kill(-launcher_pid, SIGTERM) == -1 && errno != ESRCH) {
+            ELOG("Could not close launcher (pid %d): %s\n", (int)launcher_pid, strerror(errno));
+        }
+        /* launcher_pid is reset by launcher_exited_cb once it is gone. */
+        return;
+    }
+
+    const pid_t pid = fork();
+    if (pid == -1) {
+        ELOG("Could not fork() to start the launcher: %s\n", strerror(errno));
+        return;
+    }
+    if (pid == 0) {
+        /* Child: own session/process group, default SIGPIPE disposition. */
+        setsid();
+        signal(SIGPIPE, SIG_DFL);
+        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", (char *)NULL);
+        ELOG("Could not execute i3-dmenu-desktop: %s\n", strerror(errno));
+        _exit(EXIT_FAILURE);
+    }
+
+    launcher_pid = pid;
+    ev_child_init(&launcher_watcher, launcher_exited_cb, pid, 0);
+    ev_child_start(main_loop, &launcher_watcher);
+}
 
 /* Width of the launcher button itself (0 if the launcher is disabled). */
 static int launcher_button_width(void) {
@@ -610,7 +660,7 @@ static void handle_button(xcb_button_press_event_t *event) {
 
     if (config.launcher && x < launcher_button_width()) {
         if (!event_is_release && event->detail == 1) {
-            i3_send_msg(I3_IPC_MESSAGE_TYPE_RUN_COMMAND, launcher_command);
+            toggle_launcher();
         }
         return;
     }

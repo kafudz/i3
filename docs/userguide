@@ -1943,7 +1943,8 @@ bar {
 === Launcher button
 
 i3bar can show a launcher button before the workspace buttons. Clicking it with
-the left mouse button runs +i3-dmenu-desktop+. It is disabled by default.
+the left mouse button runs +i3-dmenu-desktop+; clicking it again while the
+launcher is still open closes it. It is disabled by default.
 
 *Syntax*:
 ------------------------
