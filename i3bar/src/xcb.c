@@ -527,6 +527,24 @@ static int predict_button_width(int name_width) {
 
 static i3String *launcher_label = NULL;
 
+/* Width of the launcher button itself (0 if the launcher is disabled). */
+static int launcher_button_width(void) {
+    if (!config.launcher) {
+        return 0;
+    }
+    if (launcher_label == NULL) {
+        launcher_label = i3string_from_utf8("Apps");
+    }
+    return predict_button_width(predict_text_width(launcher_label));
+}
+
+/* Horizontal space taken by the launcher button including the gap to the
+ * first workspace button (0 if the launcher is disabled). */
+static int launcher_total_width(void) {
+    const int w = launcher_button_width();
+    return w > 0 ? w + logical_px(ws_spacing_px) : 0;
+}
+
 /* The running launcher (i3-dmenu-desktop), or -1 if it is not running. */
 static pid_t launcher_pid = -1;
 static ev_child launcher_watcher;
@@ -537,6 +555,32 @@ static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
     ev_child_stop(loop, w);
     DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
     launcher_pid = -1;
+}
+
+/* Font and size of the launcher's dmenu, and its geometry. */
+static const char *launcher_dmenu_font = "monospace:size=12";
+static const int launcher_dmenu_lines = 15;
+static const int launcher_dmenu_min_width_px = 300;
+
+/*
+ * Builds the dmenu command line for i3-dmenu-desktop: a vertical list that
+ * stacks up from just above the launcher button (or down from just below it,
+ * if the bar is at the top), as wide as the list needs but at least as wide
+ * as the button, and not covering the bar so that the button stays clickable
+ * for closing it again. Needs a dmenu that supports -P, -x, -y and -z.
+ *
+ * The caller has to free() the result.
+ */
+static char *launcher_dmenu_command(void) {
+    char *cmd;
+    sasprintf(&cmd, "dmenu -i -P -l %d -fn '%s' -x %d -y %d -z %d%s",
+              launcher_dmenu_lines,
+              launcher_dmenu_font,
+              logical_px(config.padding.x),
+              bar_height,
+              MAX(launcher_button_width(), logical_px(launcher_dmenu_min_width_px)),
+              (config.position != POS_TOP ? " -b" : ""));
+    return cmd;
 }
 
 /*
@@ -559,41 +603,29 @@ static void toggle_launcher(void) {
         return;
     }
 
+    /* Build the command line before fork(): no allocations in the child. */
+    char *dmenu_command = launcher_dmenu_command();
+    DLOG("Starting launcher with dmenu command: %s\n", dmenu_command);
+
     const pid_t pid = fork();
     if (pid == -1) {
         ELOG("Could not fork() to start the launcher: %s\n", strerror(errno));
+        free(dmenu_command);
         return;
     }
     if (pid == 0) {
         /* Child: own session/process group, default SIGPIPE disposition. */
         setsid();
         signal(SIGPIPE, SIG_DFL);
-        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", (char *)NULL);
+        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", dmenu_command, (char *)NULL);
         ELOG("Could not execute i3-dmenu-desktop: %s\n", strerror(errno));
         _exit(EXIT_FAILURE);
     }
+    free(dmenu_command);
 
     launcher_pid = pid;
     ev_child_init(&launcher_watcher, launcher_exited_cb, pid, 0);
     ev_child_start(main_loop, &launcher_watcher);
-}
-
-/* Width of the launcher button itself (0 if the launcher is disabled). */
-static int launcher_button_width(void) {
-    if (!config.launcher) {
-        return 0;
-    }
-    if (launcher_label == NULL) {
-        launcher_label = i3string_from_utf8("Apps");
-    }
-    return predict_button_width(predict_text_width(launcher_label));
-}
-
-/* Horizontal space taken by the launcher button including the gap to the
- * first workspace button (0 if the launcher is disabled). */
-static int launcher_total_width(void) {
-    const int w = launcher_button_width();
-    return w > 0 ? w + logical_px(ws_spacing_px) : 0;
 }
 
 static char *quote_workspace_name(const char *in) {
