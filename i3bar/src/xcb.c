@@ -743,7 +743,8 @@ static void toggle_launcher(void) {
         }
         bool opacity = false;
         if (launcher_opacity() < 100) {
-            static const char *const op_args[] = {"dmenu", "-op", "100", "-v", NULL};
+            /* Below 100 on purpose: that is the value range we are going to use. */
+            static const char *const op_args[] = {"dmenu", "-op", "99", "-v", NULL};
             opacity = probe_dmenu(op_args);
             if (!opacity) {
                 ELOG("Your dmenu does not support -op, so launcher_opacity has no effect. "
