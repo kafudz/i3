@@ -555,6 +555,7 @@ state BAR:
   'font'                   -> BAR_FONT
   'separator_symbol'       -> BAR_SEPARATOR_SYMBOL
   'binding_mode_indicator' -> BAR_BINDING_MODE_INDICATOR
+  'launcher_button'        -> BAR_LAUNCHER_BUTTON
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
   'strip_workspace_numbers' -> BAR_STRIP_WORKSPACE_NUMBERS
@@ -662,6 +663,10 @@ state BAR_SEPARATOR_SYMBOL:
 state BAR_BINDING_MODE_INDICATOR:
   value = word
       -> call cfg_bar_binding_mode_indicator($value); BAR
+
+state BAR_LAUNCHER_BUTTON:
+  value = word
+      -> call cfg_bar_launcher_button($value); BAR
 
 state BAR_WORKSPACE_BUTTONS:
   value = word

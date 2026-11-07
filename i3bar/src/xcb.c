@@ -522,6 +522,30 @@ static int predict_button_width(int name_width) {
                logical_px(config.ws_min_width));
 }
 
+/* Command sent to i3 when the launcher button is clicked. i3 spawns it, so
+ * i3bar does not need to care about forking or reaping children. */
+static const char *launcher_command = "exec --no-startup-id i3-dmenu-desktop";
+
+static i3String *launcher_label = NULL;
+
+/* Width of the launcher button itself (0 if the launcher is disabled). */
+static int launcher_button_width(void) {
+    if (!config.launcher) {
+        return 0;
+    }
+    if (launcher_label == NULL) {
+        launcher_label = i3string_from_utf8("Apps");
+    }
+    return predict_button_width(predict_text_width(launcher_label));
+}
+
+/* Horizontal space taken by the launcher button including the gap to the
+ * first workspace button (0 if the launcher is disabled). */
+static int launcher_total_width(void) {
+    const int w = launcher_button_width();
+    return w > 0 ? w + logical_px(ws_spacing_px) : 0;
+}
+
 static char *quote_workspace_name(const char *in) {
     const size_t namelen = strlen(in);
     const size_t len = namelen + strlen("workspace \"") + 1;
@@ -584,7 +608,14 @@ static void handle_button(xcb_button_press_event_t *event) {
         return;
     }
 
-    int workspace_width = 0;
+    if (config.launcher && x < launcher_button_width()) {
+        if (!event_is_release && event->detail == 1) {
+            i3_send_msg(I3_IPC_MESSAGE_TYPE_RUN_COMMAND, launcher_command);
+        }
+        return;
+    }
+
+    int workspace_width = launcher_total_width();
     i3_ws *cur_ws = NULL, *clicked_ws = NULL, *ws_walk;
     TAILQ_FOREACH (ws_walk, walk->workspaces, tailq) {
         int w = predict_button_width(ws_walk->name_width);
@@ -1771,6 +1802,14 @@ void draw_bars(bool unhide) {
         bool use_focus_colors = output_has_focus(outputs_walk);
 
         draw_util_clear_surface(&(outputs_walk->buffer), (use_focus_colors ? colors.focus_bar_bg : colors.bar_bg));
+
+        if (config.launcher) {
+            const int w = launcher_button_width();
+            draw_button(&(outputs_walk->buffer), colors.inactive_ws_fg, colors.inactive_ws_bg,
+                        colors.inactive_ws_border, workspace_width, w,
+                        predict_text_width(launcher_label), launcher_label);
+            workspace_width += launcher_total_width();
+        }
 
         if (!config.disable_ws) {
             i3_ws *ws_walk;

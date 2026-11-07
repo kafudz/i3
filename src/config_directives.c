@@ -931,6 +931,10 @@ CFGFUN(bar_binding_mode_indicator, const char *value) {
     current_bar->hide_binding_mode_indicator = !boolstr(value);
 }
 
+CFGFUN(bar_launcher_button, const char *value) {
+    current_bar->launcher_button = boolstr(value);
+}
+
 CFGFUN(bar_workspace_buttons, const char *value) {
     current_bar->hide_workspace_buttons = !boolstr(value);
 }

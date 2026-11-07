@@ -852,6 +852,9 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
         ystr(config->separator_symbol);
     }
 
+    ystr("launcher_button");
+    y(bool, config->launcher_button);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 

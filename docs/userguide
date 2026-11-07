@@ -1940,6 +1940,23 @@ bar {
 }
 ------------------------
 
+=== Launcher button
+
+i3bar can show a launcher button before the workspace buttons. Clicking it with
+the left mouse button runs +i3-dmenu-desktop+. It is disabled by default.
+
+*Syntax*:
+------------------------
+launcher_button yes|no
+------------------------
+
+*Example*:
+------------------------
+bar {
+    launcher_button yes
+}
+------------------------
+
 === Minimal width for workspace buttons
 
 By default, the width a workspace button is determined by the width of the text
