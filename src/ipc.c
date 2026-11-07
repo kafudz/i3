@@ -855,6 +855,17 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_button");
     y(bool, config->launcher_button);
 
+    if (config->launcher_font) {
+        ystr("launcher_font");
+        ystr(config->launcher_font);
+    }
+
+    ystr("launcher_lines");
+    y(integer, config->launcher_lines);
+
+    ystr("launcher_width");
+    y(integer, config->launcher_width);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 

@@ -557,28 +557,39 @@ static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
     launcher_pid = -1;
 }
 
-/* Font and size of the launcher's dmenu, and its geometry. */
-static const char *launcher_dmenu_font = "monospace:size=12";
-static const int launcher_dmenu_lines = 15;
-static const int launcher_dmenu_min_width_px = 300;
+/* Defaults for 'launcher_font', 'launcher_lines' and 'launcher_width'. */
+static const char *launcher_default_font = "monospace:size=12";
+static const int launcher_default_lines = 15;
+static const int launcher_default_width_px = 300;
 
 /*
  * Builds the dmenu command line for i3-dmenu-desktop: a vertical list that
  * stacks up from just above the launcher button (or down from just below it,
- * if the bar is at the top), as wide as the list needs but at least as wide
- * as the button, and not covering the bar so that the button stays clickable
- * for closing it again. Needs a dmenu that supports -P, -x, -y and -z.
+ * if the bar is at the top), at least as wide as the button, and not covering
+ * the bar so that the button stays clickable for closing it again. Font,
+ * number of lines and width can be set with 'launcher_font', 'launcher_lines'
+ * and 'launcher_width'. Needs a dmenu that supports -P, -x, -y and -z.
  *
  * The caller has to free() the result.
  */
 static char *launcher_dmenu_command(void) {
+    const char *font = config.launcher_font ? config.launcher_font : launcher_default_font;
+    /* The font ends up inside single quotes in a shell command line. */
+    if (strchr(font, '\'') != NULL) {
+        ELOG("Ignoring launcher_font \"%s\": it must not contain a single quote\n", font);
+        font = launcher_default_font;
+    }
+    const int lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
+    const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
+                                                : logical_px(launcher_default_width_px);
+
     char *cmd;
     sasprintf(&cmd, "dmenu -i -P -l %d -fn '%s' -x %d -y %d -z %d%s",
-              launcher_dmenu_lines,
-              launcher_dmenu_font,
+              lines,
+              font,
               logical_px(config.padding.x),
               bar_height,
-              MAX(launcher_button_width(), logical_px(launcher_dmenu_min_width_px)),
+              MAX(launcher_button_width(), width),
               (config.position != POS_TOP ? " -b" : ""));
     return cmd;
 }

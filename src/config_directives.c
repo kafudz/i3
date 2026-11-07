@@ -935,6 +935,19 @@ CFGFUN(bar_launcher_button, const char *value) {
     current_bar->launcher_button = boolstr(value);
 }
 
+CFGFUN(bar_launcher_font, const char *font) {
+    FREE(current_bar->launcher_font);
+    current_bar->launcher_font = sstrdup(font);
+}
+
+CFGFUN(bar_launcher_lines, const long lines) {
+    current_bar->launcher_lines = lines;
+}
+
+CFGFUN(bar_launcher_width, const long width) {
+    current_bar->launcher_width = width;
+}
+
 CFGFUN(bar_workspace_buttons, const char *value) {
     current_bar->hide_workspace_buttons = !boolstr(value);
 }

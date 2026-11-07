@@ -1952,6 +1952,27 @@ top), so it does not cover the bar. This needs a dmenu which supports the
 +-P+, +-x+, +-y+ and +-z+ options (for example the dmenu from
 https://github.com/kafudz/dmenu, branch +feature/geometry+).
 
+The font, the number of lines and the width of the list can be changed. The
+defaults are +monospace:size=12+, 15 lines and 300 pixels (the list is never
+narrower than the button). The font must not contain a single quote.
+
+*Syntax*:
+-----------------------------------
+launcher_font <font>
+launcher_lines <number>
+launcher_width <number> [px]
+-----------------------------------
+
+*Example*:
+-----------------------------------
+bar {
+    launcher_button yes
+    launcher_font monospace:size=14
+    launcher_lines 20
+    launcher_width 400 px
+}
+-----------------------------------
+
 *Syntax*:
 ------------------------
 launcher_button yes|no

@@ -224,6 +224,8 @@ static void got_bar_config_update(const unsigned char *event, size_t size) {
     /* update the configuration with the received settings */
     DLOG("Received bar config update \"%s\"\n", event);
 
+    FREE(config.launcher_font);
+
     char *old_command = config.command;
     char *old_workspace_command = config.workspace_command;
     config.command = NULL;

@@ -352,6 +352,14 @@ struct Barconfig {
      * option is 'launcher_button yes'. */
     bool launcher_button;
 
+    /** Font of the launcher's dmenu (default: monospace:size=12), number of
+     * lines of its list (default: 15) and its width in pixels (default: 300).
+     * Configuration options are 'launcher_font', 'launcher_lines' and
+     * 'launcher_width'; 0 or unset selects the default. */
+    char *launcher_font;
+    int launcher_lines;
+    int launcher_width;
+
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'
      * but we invert the bool to get the correct default when initializing with
      * zero. */

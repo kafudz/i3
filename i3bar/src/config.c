@@ -207,6 +207,13 @@ static int config_string_cb(void *params_, const unsigned char *val, size_t _len
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_font")) {
+        DLOG("launcher_font = %.*s\n", len, val);
+        FREE(config.launcher_font);
+        sasprintf(&config.launcher_font, "%.*s", len, val);
+        return 1;
+    }
+
     if (!strcmp(cur_key, "separator_symbol")) {
         DLOG("separator = %.*s\n", len, val);
         I3STRING_FREE(config.separator_symbol);
@@ -386,6 +393,18 @@ static int config_integer_cb(void *params_, long long val) {
     if (!strcmp(cur_key, "modifier")) {
         DLOG("modifier = %lld\n", val);
         config.modifier = (uint32_t)val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_lines")) {
+        DLOG("launcher_lines = %lld\n", val);
+        config.launcher_lines = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_width")) {
+        DLOG("launcher_width = %lld\n", val);
+        config.launcher_width = val;
         return 1;
     }
 

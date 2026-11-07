@@ -58,6 +58,9 @@ typedef struct config_t {
     bool disable_binding_mode_indicator;
     bool disable_ws;
     bool launcher;
+    char *launcher_font;
+    int launcher_lines;
+    int launcher_width;
     int ws_min_width;
     bool strip_ws_numbers;
     bool strip_ws_name;
