@@ -866,6 +866,12 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_width");
     y(integer, config->launcher_width);
 
+    ystr("launcher_border");
+    y(integer, config->launcher_border);
+
+    ystr("launcher_separators");
+    y(bool, config->launcher_separators);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 

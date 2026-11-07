@@ -61,6 +61,8 @@ typedef struct config_t {
     char *launcher_font;
     int launcher_lines;
     int launcher_width;
+    int launcher_border;
+    bool launcher_separators;
     int ws_min_width;
     bool strip_ws_numbers;
     bool strip_ws_name;

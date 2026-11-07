@@ -948,6 +948,14 @@ CFGFUN(bar_launcher_width, const long width) {
     current_bar->launcher_width = width;
 }
 
+CFGFUN(bar_launcher_border, const long width) {
+    current_bar->launcher_border = width;
+}
+
+CFGFUN(bar_launcher_separators, const char *value) {
+    current_bar->launcher_separators = boolstr(value);
+}
+
 CFGFUN(bar_workspace_buttons, const char *value) {
     current_bar->hide_workspace_buttons = !boolstr(value);
 }
@@ -970,6 +978,8 @@ CFGFUN(bar_start) {
     TAILQ_INIT(&(current_bar->tray_outputs));
     current_bar->tray_padding = 2;
     current_bar->modifier = XCB_KEY_BUT_MASK_MOD_4;
+    current_bar->launcher_border = 1;
+    current_bar->launcher_separators = true;
 }
 
 CFGFUN(bar_finish) {

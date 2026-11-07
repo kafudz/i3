@@ -559,6 +559,8 @@ state BAR:
   'launcher_font'          -> BAR_LAUNCHER_FONT
   'launcher_lines'         -> BAR_LAUNCHER_LINES
   'launcher_width'         -> BAR_LAUNCHER_WIDTH
+  'launcher_border'        -> BAR_LAUNCHER_BORDER
+  'launcher_separators'    -> BAR_LAUNCHER_SEPARATORS
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
   'strip_workspace_numbers' -> BAR_STRIP_WORKSPACE_NUMBERS
@@ -688,6 +690,20 @@ state BAR_LAUNCHER_WIDTH_PX:
       ->
   end
       -> call cfg_bar_launcher_width(&width); BAR
+
+state BAR_LAUNCHER_BORDER:
+  width = number
+      -> BAR_LAUNCHER_BORDER_PX
+
+state BAR_LAUNCHER_BORDER_PX:
+  'px'
+      ->
+  end
+      -> call cfg_bar_launcher_border(&width); BAR
+
+state BAR_LAUNCHER_SEPARATORS:
+  value = word
+      -> call cfg_bar_launcher_separators($value); BAR
 
 state BAR_WORKSPACE_BUTTONS:
   value = word

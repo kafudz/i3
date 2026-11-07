@@ -360,6 +360,12 @@ struct Barconfig {
     int launcher_lines;
     int launcher_width;
 
+    /** Border width in pixels around the launcher's list (default: 1, 0 for
+     * none) and whether lines are drawn between its entries (default: yes).
+     * Configuration options are 'launcher_border' and 'launcher_separators'. */
+    int launcher_border;
+    bool launcher_separators;
+
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'
      * but we invert the bool to get the correct default when initializing with
      * zero. */

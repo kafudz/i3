@@ -1952,15 +1952,21 @@ top), so it does not cover the bar. This needs a dmenu which supports the
 +-P+, +-x+, +-y+ and +-z+ options (for example the dmenu from
 https://github.com/kafudz/dmenu, branch +feature/geometry+).
 
-The font, the number of lines and the width of the list can be changed. The
-defaults are +monospace:size=12+, 15 lines and 300 pixels (the list is never
-narrower than the button). The font must not contain a single quote.
+The font, the number of lines, the width, the border and the lines between the
+entries of the list can be changed. The defaults are +monospace:size=12+, 15
+lines, 300 pixels (the list is never narrower than the button), a border of 1
+pixel and lines between the entries. A border width of 0 removes the border.
+The font must not contain any of the characters +'+, +"+, +`+, +$+ and +\+.
+The border and the lines need a dmenu with +-bw+ and +-L+ (see above); with an
+older dmenu they are simply left out.
 
 *Syntax*:
 -----------------------------------
 launcher_font <font>
 launcher_lines <number>
 launcher_width <number> [px]
+launcher_border <number> [px]
+launcher_separators yes|no
 -----------------------------------
 
 *Example*:
@@ -1970,6 +1976,8 @@ bar {
     launcher_font monospace:size=14
     launcher_lines 20
     launcher_width 400 px
+    launcher_border 2 px
+    launcher_separators yes
 }
 -----------------------------------
 
