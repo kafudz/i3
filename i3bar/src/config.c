@@ -421,6 +421,12 @@ static int config_integer_cb(void *params_, long long val) {
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_prompt_padding")) {
+        DLOG("launcher_prompt_padding = %lld\n", val);
+        config.launcher_prompt_padding = val;
+        return 1;
+    }
+
     if (!strcmp(cur_key, "launcher_padding")) {
         DLOG("launcher_padding = %lld\n", val);
         config.launcher_padding = val;

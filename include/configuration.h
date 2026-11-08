@@ -378,6 +378,10 @@ struct Barconfig {
      * 8) and whether a click outside of the list closes it (default: yes).
      * Configuration options are 'launcher_padding' and 'launcher_click_away'. */
     int launcher_padding;
+
+    /** Extra height in pixels of the launcher's input field (default: 8).
+     * Configuration option is 'launcher_prompt_padding'. */
+    int launcher_prompt_padding;
     bool launcher_click_away;
 
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'

@@ -883,6 +883,9 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_padding");
     y(integer, config->launcher_padding);
 
+    ystr("launcher_prompt_padding");
+    y(integer, config->launcher_prompt_padding);
+
     ystr("launcher_click_away");
     y(bool, config->launcher_click_away);
 

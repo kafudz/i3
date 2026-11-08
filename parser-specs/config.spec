@@ -564,6 +564,7 @@ state BAR:
   'launcher_separators'    -> BAR_LAUNCHER_SEPARATORS
   'launcher_opacity'       -> BAR_LAUNCHER_OPACITY
   'launcher_padding'       -> BAR_LAUNCHER_PADDING
+  'launcher_prompt_padding' -> BAR_LAUNCHER_PROMPT_PADDING
   'launcher_click_away'    -> BAR_LAUNCHER_CLICK_AWAY
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
@@ -718,6 +719,16 @@ state BAR_LAUNCHER_PADDING_PX:
       ->
   end
       -> call cfg_bar_launcher_padding(&padding); BAR
+
+state BAR_LAUNCHER_PROMPT_PADDING:
+  padding = number
+      -> BAR_LAUNCHER_PROMPT_PADDING_PX
+
+state BAR_LAUNCHER_PROMPT_PADDING_PX:
+  'px'
+      ->
+  end
+      -> call cfg_bar_launcher_prompt_padding(&padding); BAR
 
 state BAR_LAUNCHER_CLICK_AWAY:
   value = word

@@ -957,6 +957,10 @@ CFGFUN(bar_launcher_border, const long width) {
     current_bar->launcher_border = width;
 }
 
+CFGFUN(bar_launcher_prompt_padding, const long padding) {
+    current_bar->launcher_prompt_padding = padding;
+}
+
 CFGFUN(bar_launcher_padding, const long padding) {
     current_bar->launcher_padding = padding;
 }
@@ -998,6 +1002,7 @@ CFGFUN(bar_start) {
     current_bar->launcher_border = 1;
     current_bar->launcher_opacity = 100;
     current_bar->launcher_padding = 8;
+    current_bar->launcher_prompt_padding = 8;
     current_bar->launcher_click_away = true;
     current_bar->launcher_separators = true;
 }
