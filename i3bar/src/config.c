@@ -308,6 +308,12 @@ static int config_boolean_cb(void *params_, int val) {
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_click_away")) {
+        DLOG("launcher_click_away = %d\n", val);
+        config.launcher_click_away = val;
+        return 1;
+    }
+
     if (!strcmp(cur_key, "launcher_separators")) {
         DLOG("launcher_separators = %d\n", val);
         config.launcher_separators = val;
@@ -405,6 +411,12 @@ static int config_integer_cb(void *params_, long long val) {
     if (!strcmp(cur_key, "launcher_lines")) {
         DLOG("launcher_lines = %lld\n", val);
         config.launcher_lines = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_padding")) {
+        DLOG("launcher_padding = %lld\n", val);
+        config.launcher_padding = val;
         return 1;
     }
 

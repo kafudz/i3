@@ -114,6 +114,8 @@ CFGFUN(bar_launcher_lines, const long lines);
 CFGFUN(bar_launcher_width, const long width);
 CFGFUN(bar_launcher_border, const long width);
 CFGFUN(bar_launcher_opacity, const long opacity);
+CFGFUN(bar_launcher_padding, const long padding);
+CFGFUN(bar_launcher_click_away, const char *value);
 CFGFUN(bar_launcher_separators, const char *value);
 CFGFUN(bar_workspace_buttons, const char *value);
 CFGFUN(bar_workspace_min_width, const long width);

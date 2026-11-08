@@ -370,6 +370,12 @@ struct Barconfig {
      * compositing manager. Configuration option is 'launcher_opacity'. */
     int launcher_opacity;
 
+    /** Extra height in pixels of each entry of the launcher's list (default:
+     * 8) and whether a click outside of the list closes it (default: yes).
+     * Configuration options are 'launcher_padding' and 'launcher_click_away'. */
+    int launcher_padding;
+    bool launcher_click_away;
+
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'
      * but we invert the bool to get the correct default when initializing with
      * zero. */

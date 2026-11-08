@@ -579,6 +579,7 @@ enum {
     LAUNCHER_DMENU_PLAIN = 0,    /* stock dmenu: no positioning */
     LAUNCHER_DMENU_GEOMETRY = 1, /* -P, -x, -y, -z */
     LAUNCHER_DMENU_FULL = 2,     /* additionally -L and -bw */
+    LAUNCHER_DMENU_EXTRA = 3,    /* additionally -ip and -C */
 };
 
 /*
@@ -623,7 +624,13 @@ static char *launcher_dmenu_command(int level, bool with_opacity) {
     }
 
     char *extra = NULL;
-    if (level >= LAUNCHER_DMENU_FULL) {
+    if (level >= LAUNCHER_DMENU_EXTRA) {
+        sasprintf(&extra, "%s -bw %d -ip %d%s",
+                  (config.launcher_separators ? " -L" : ""),
+                  logical_px(MAX(config.launcher_border, 0)),
+                  logical_px(MAX(config.launcher_padding, 0)),
+                  (config.launcher_click_away ? " -C" : ""));
+    } else if (level >= LAUNCHER_DMENU_FULL) {
         sasprintf(&extra, "%s -bw %d",
                   (config.launcher_separators ? " -L" : ""),
                   logical_px(MAX(config.launcher_border, 0)));
@@ -674,10 +681,15 @@ static bool probe_dmenu(const char *const *args) {
 
 /* Returns the highest LAUNCHER_DMENU_* level the dmenu in $PATH supports. */
 static int launcher_dmenu_level(void) {
+    static const char *const extra[] = {"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1",
+                                        "-L", "-bw", "0", "-ip", "0", "-C", "-v", NULL};
     static const char *const full[] = {"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1",
                                        "-L", "-bw", "0", "-v", NULL};
     static const char *const geometry[] = {"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1",
                                            "-v", NULL};
+    if (probe_dmenu(extra)) {
+        return LAUNCHER_DMENU_EXTRA;
+    }
     if (probe_dmenu(full)) {
         return LAUNCHER_DMENU_FULL;
     }
@@ -688,7 +700,7 @@ static int launcher_dmenu_level(void) {
 }
 
 static void free_launcher_commands(char *commands[][2]) {
-    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_FULL; level++) {
+    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_EXTRA; level++) {
         free(commands[level][0]);
         free(commands[level][1]);
     }
@@ -715,8 +727,8 @@ static void toggle_launcher(void) {
     }
 
     /* Build the command lines before fork(): no allocations in the child. */
-    char *commands[LAUNCHER_DMENU_FULL + 1][2]; /* [level][with opacity?] */
-    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_FULL; level++) {
+    char *commands[LAUNCHER_DMENU_EXTRA + 1][2]; /* [level][with opacity?] */
+    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_EXTRA; level++) {
         commands[level][0] = launcher_dmenu_command(level, false);
         commands[level][1] = launcher_dmenu_command(level, true);
     }
@@ -734,12 +746,17 @@ static void toggle_launcher(void) {
         signal(SIGPIPE, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
         const int level = launcher_dmenu_level();
-        if (level < LAUNCHER_DMENU_FULL) {
-            ELOG("Your dmenu does not support all of -P/-x/-y/-z/-L/-bw, so the launcher list "
-                 "is limited (%s). Install a dmenu with these options "
+        if (level < LAUNCHER_DMENU_EXTRA) {
+            const char *missing = "it cannot be placed above the button";
+            if (level == LAUNCHER_DMENU_GEOMETRY) {
+                missing = "no border, lines between entries, padding or closing on outside clicks";
+            } else if (level == LAUNCHER_DMENU_FULL) {
+                missing = "no padding or closing on outside clicks";
+            }
+            ELOG("Your dmenu does not support all of -P/-x/-y/-z/-L/-bw/-ip/-C, so the launcher "
+                 "list is limited (%s). Install a dmenu with these options "
                  "(github.com/kafudz/dmenu, branch feature/geometry).\n",
-                 level == LAUNCHER_DMENU_GEOMETRY ? "no border or lines between entries"
-                                                  : "it cannot be placed above the button");
+                 missing);
         }
         bool opacity = false;
         if (launcher_opacity() < 100) {

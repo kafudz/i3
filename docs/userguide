@@ -1968,7 +1968,15 @@ launcher_width <number> [px]
 launcher_border <number> [px]
 launcher_separators yes|no
 launcher_opacity <percent>
+launcher_padding <number> [px]
+launcher_click_away yes|no
 -----------------------------------
+
++launcher_padding+ adds the given number of pixels to the height of every entry
+(default 8, 0 for none), and +launcher_click_away+ (default yes) closes the list
+when you click anywhere outside of it, e.g. on the desktop; for that the list
+grabs the mouse while it is open, so the click does not reach the window under
+it. Both need a dmenu with +-ip+ and +-C+.
 
 The opacity of the whole list (+launcher_opacity+, 1 to 100, default 100) is
 applied by the compositing manager, e.g. picom, and needs a dmenu with +-op+.
@@ -1984,6 +1992,8 @@ bar {
     launcher_border 2 px
     launcher_separators yes
     launcher_opacity 90
+    launcher_padding 10 px
+    launcher_click_away yes
 }
 -----------------------------------
 

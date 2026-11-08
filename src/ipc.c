@@ -875,6 +875,12 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_opacity");
     y(integer, config->launcher_opacity);
 
+    ystr("launcher_padding");
+    y(integer, config->launcher_padding);
+
+    ystr("launcher_click_away");
+    y(bool, config->launcher_click_away);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 
