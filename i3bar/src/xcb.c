@@ -566,6 +566,7 @@ static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
 
 /* Defaults for 'launcher_font', 'launcher_lines' and 'launcher_width'. */
 static const char *launcher_default_font = "monospace:size=12";
+static const char *launcher_default_background = "#121314";
 static const int launcher_default_lines = 15;
 static const int launcher_default_width_px = 300;
 
@@ -604,6 +605,17 @@ static char *launcher_dmenu_command(int level, bool with_opacity) {
         ELOG("Ignoring launcher_font \"%s\": it must not contain any of ' \" ` $ \\\n", font);
         font = launcher_default_font;
     }
+    const char *background = config.launcher_background ? config.launcher_background
+                                                        : launcher_default_background;
+    /* Also ends up in a shell command line, so only accept "#rrggbb". */
+    bool valid_color = (strlen(background) == 7 && background[0] == '#');
+    for (int i = 1; valid_color && i < 7; i++) {
+        valid_color = (strchr("0123456789abcdefABCDEF", background[i]) != NULL);
+    }
+    if (!valid_color) {
+        ELOG("Ignoring launcher_background \"%s\": it must look like #rrggbb\n", background);
+        background = launcher_default_background;
+    }
     const int lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
     const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
                                                 : logical_px(launcher_default_width_px);
@@ -618,7 +630,7 @@ static char *launcher_dmenu_command(int level, bool with_opacity) {
 
     char *cmd;
     if (level == LAUNCHER_DMENU_PLAIN) {
-        sasprintf(&cmd, "dmenu -i -l %d -fn '%s'%s%s", lines, font, bottom, opacity);
+        sasprintf(&cmd, "dmenu -i -l %d -fn '%s' -nb '%s'%s%s", lines, font, background, bottom, opacity);
         free(opacity);
         return cmd;
     }
@@ -637,9 +649,10 @@ static char *launcher_dmenu_command(int level, bool with_opacity) {
     } else {
         extra = sstrdup("");
     }
-    sasprintf(&cmd, "dmenu -i -P -l %d -fn '%s' -x %d -y %d -z %d%s%s%s",
+    sasprintf(&cmd, "dmenu -i -P -l %d -fn '%s' -nb '%s' -x %d -y %d -z %d%s%s%s",
               lines,
               font,
+              background,
               logical_px(config.padding.x),
               bar_height,
               MAX(launcher_button_width(), width),

@@ -110,6 +110,7 @@ CFGFUN(bar_workspace_command, const char *command);
 CFGFUN(bar_binding_mode_indicator, const char *value);
 CFGFUN(bar_launcher_button, const char *value);
 CFGFUN(bar_launcher_font, const char *font);
+CFGFUN(bar_launcher_background, const char *color);
 CFGFUN(bar_launcher_lines, const long lines);
 CFGFUN(bar_launcher_width, const long width);
 CFGFUN(bar_launcher_border, const long width);

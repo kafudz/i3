@@ -207,6 +207,13 @@ static int config_string_cb(void *params_, const unsigned char *val, size_t _len
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_background")) {
+        DLOG("launcher_background = %.*s\n", len, val);
+        FREE(config.launcher_background);
+        sasprintf(&config.launcher_background, "%.*s", len, val);
+        return 1;
+    }
+
     if (!strcmp(cur_key, "launcher_font")) {
         DLOG("launcher_font = %.*s\n", len, val);
         FREE(config.launcher_font);

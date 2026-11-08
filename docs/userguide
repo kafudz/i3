@@ -1963,6 +1963,7 @@ older dmenu they are simply left out.
 *Syntax*:
 -----------------------------------
 launcher_font <font>
+launcher_background <color>
 launcher_lines <number>
 launcher_width <number> [px]
 launcher_border <number> [px]
@@ -1971,6 +1972,9 @@ launcher_opacity <percent>
 launcher_padding <number> [px]
 launcher_click_away yes|no
 -----------------------------------
+
++launcher_background+ sets the background color of the list as +#rrggbb+ (default
++#121314+).
 
 +launcher_padding+ adds the given number of pixels to the height of every entry
 (default 8, 0 for none), and +launcher_click_away+ (default yes) closes the list
@@ -1987,6 +1991,7 @@ Without a compositor it has no effect.
 bar {
     launcher_button yes
     launcher_font monospace:size=14
+    launcher_background #121314
     launcher_lines 20
     launcher_width 400 px
     launcher_border 2 px

@@ -59,6 +59,7 @@ typedef struct config_t {
     bool disable_ws;
     bool launcher;
     char *launcher_font;
+    char *launcher_background;
     int launcher_lines;
     int launcher_width;
     int launcher_border;

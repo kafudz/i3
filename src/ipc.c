@@ -860,6 +860,11 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
         ystr(config->launcher_font);
     }
 
+    if (config->launcher_background) {
+        ystr("launcher_background");
+        ystr(config->launcher_background);
+    }
+
     ystr("launcher_lines");
     y(integer, config->launcher_lines);
 

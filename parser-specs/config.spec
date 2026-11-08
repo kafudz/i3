@@ -557,6 +557,7 @@ state BAR:
   'binding_mode_indicator' -> BAR_BINDING_MODE_INDICATOR
   'launcher_button'        -> BAR_LAUNCHER_BUTTON
   'launcher_font'          -> BAR_LAUNCHER_FONT
+  'launcher_background'    -> BAR_LAUNCHER_BACKGROUND
   'launcher_lines'         -> BAR_LAUNCHER_LINES
   'launcher_width'         -> BAR_LAUNCHER_WIDTH
   'launcher_border'        -> BAR_LAUNCHER_BORDER
@@ -679,6 +680,10 @@ state BAR_LAUNCHER_BUTTON:
 state BAR_LAUNCHER_FONT:
   font = string
       -> call cfg_bar_launcher_font($font); BAR
+
+state BAR_LAUNCHER_BACKGROUND:
+  color = word
+      -> call cfg_bar_launcher_background($color); BAR
 
 state BAR_LAUNCHER_LINES:
   lines = number

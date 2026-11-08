@@ -357,6 +357,10 @@ struct Barconfig {
      * Configuration options are 'launcher_font', 'launcher_lines' and
      * 'launcher_width'; 0 or unset selects the default. */
     char *launcher_font;
+
+    /** Background color of the launcher's list as "#rrggbb" (default:
+     * #121314). Configuration option is 'launcher_background'. */
+    char *launcher_background;
     int launcher_lines;
     int launcher_width;
 

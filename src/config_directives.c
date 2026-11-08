@@ -935,6 +935,11 @@ CFGFUN(bar_launcher_button, const char *value) {
     current_bar->launcher_button = boolstr(value);
 }
 
+CFGFUN(bar_launcher_background, const char *color) {
+    FREE(current_bar->launcher_background);
+    current_bar->launcher_background = sstrdup(color);
+}
+
 CFGFUN(bar_launcher_font, const char *font) {
     FREE(current_bar->launcher_font);
     current_bar->launcher_font = sstrdup(font);
