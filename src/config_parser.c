@@ -633,7 +633,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
     }
 
     struct stat stbuf;
-    if (fstat(fd, &stbuf) == -1) {
+    if (fstat(fd, &stbuf) == -1 || stbuf.st_size < 0) {
         close(fd);
         return PARSE_FILE_FAILED;
     }
@@ -644,16 +644,18 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
         return PARSE_FILE_FAILED;
     }
 
-    included_file->raw_contents = scalloc(stbuf.st_size + 1, 1);
-    if ((ssize_t)fread(included_file->raw_contents, 1, stbuf.st_size, fstr) != stbuf.st_size) {
+    const size_t file_size = stbuf.st_size;
+    included_file->raw_contents = scalloc(file_size + 1, 1);
+    if (fread(included_file->raw_contents, 1, file_size, fstr) != file_size) {
         fclose(fstr);
+        FREE(included_file->raw_contents);
         return PARSE_FILE_FAILED;
     }
     rewind(fstr);
 
     char buffer[4096], key[512], value[4096], *continuation = NULL;
     bool invalid_sets = false;
-    char *buf = scalloc(stbuf.st_size + 1, 1);
+    char *buf = scalloc(file_size + 1, 1);
     size_t buf_len = 0;
     while (!feof(fstr)) {
         if (!continuation) {
@@ -665,6 +667,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
             }
             fclose(fstr);
             free(buf);
+            FREE(included_file->raw_contents);
             return PARSE_FILE_FAILED;
         }
         const size_t buffer_len = strlen(buffer);
@@ -673,6 +676,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
         }
 
         /* sscanf implicitly strips whitespace. */
+        key[0] = '\0';
         value[0] = '\0';
         const bool skip_line = (sscanf(buffer, "%511s %4095[^\n]", key, value) < 1 || strlen(key) < 3);
         const bool comment = (key[0] == '#');
@@ -690,10 +694,11 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
         /* The file might have grown since we called fstat(2), so never write
          * past the end of the buffer we allocated for it. */
         const size_t append_len = strlen(buffer);
-        if (buf_len + append_len > (size_t)stbuf.st_size) {
+        if (buf_len > file_size || append_len > file_size - buf_len) {
             ELOG("Config file %s changed while it was being read, aborting.\n", f);
             fclose(fstr);
             free(buf);
+            FREE(included_file->raw_contents);
             return PARSE_FILE_FAILED;
         }
         memcpy(buf + buf_len, buffer, append_len + 1);
@@ -777,7 +782,7 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
     SLIST_FOREACH (current, &(ctx->variables), variables) {
         const int extra = (strlen(current->value) - strlen(current->key));
         for (char *next = bufcopy;
-             next < (bufcopy + stbuf.st_size) &&
+             next < (bufcopy + buf_len) &&
              (next = strcasestr(next, current->key)) != NULL;) {
             /* We need to invalidate variables completely (otherwise we may count
              * the same variable more than once, thus causing buffer overflow or
@@ -794,28 +799,28 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
     /* Then, allocate a new buffer and copy the file over to the new one,
      * but replace occurrences of our variables */
     const char *walk = buf;
-    char *new = scalloc(stbuf.st_size + extra_bytes + 1, 1);
+    char *new = scalloc(buf_len + extra_bytes + 1, 1);
     char *destwalk = new;
-    while (walk < (buf + stbuf.st_size)) {
+    while (walk < (buf + buf_len)) {
         /* Find the next variable */
         SLIST_FOREACH (current, &(ctx->variables), variables) {
             current->next_match = strcasestr(walk, current->key);
         }
         const struct Variable *nearest = NULL;
-        int distance = stbuf.st_size;
+        size_t distance = buf_len;
         SLIST_FOREACH (current, &(ctx->variables), variables) {
             if (current->next_match == NULL) {
                 continue;
             }
-            if ((current->next_match - walk) < distance) {
+            if ((size_t)(current->next_match - walk) < distance) {
                 distance = (current->next_match - walk);
                 nearest = current;
             }
         }
         if (nearest == NULL) {
             /* If there are no more variables, we just copy the rest */
-            strncpy(destwalk, walk, (buf + stbuf.st_size) - walk);
-            destwalk += (buf + stbuf.st_size) - walk;
+            strncpy(destwalk, walk, (buf + buf_len) - walk);
+            destwalk += (buf + buf_len) - walk;
             *destwalk = '\0';
             break;
         } else {
