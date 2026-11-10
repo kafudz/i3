@@ -774,7 +774,7 @@ EOT
 $expected = <<'EOT';
 cfg_bar_start()
 cfg_bar_output(LVDS-1)
-ERROR: CONFIG: Expected one of these tokens: <end>, '#', 'set', 'i3bar_command', 'status_command', 'workspace_command', 'socket_path', 'mode', 'hidden_state', 'id', 'modifier', 'wheel_up_cmd', 'wheel_down_cmd', 'bindsym', 'position', 'output', 'tray_output', 'tray_padding', 'font', 'separator_symbol', 'binding_mode_indicator', 'workspace_buttons', 'workspace_min_width', 'strip_workspace_numbers', 'strip_workspace_name', 'verbose', 'height', 'padding', 'colors', '}'
+ERROR: CONFIG: Expected one of these tokens: <end>, '#', 'set', 'i3bar_command', 'status_command', 'workspace_command', 'socket_path', 'mode', 'hidden_state', 'id', 'modifier', 'wheel_up_cmd', 'wheel_down_cmd', 'bindsym', 'position', 'output', 'tray_output', 'tray_padding', 'font', 'separator_symbol', 'binding_mode_indicator', 'launcher_button', 'launcher_font', 'launcher_background', 'launcher_lines', 'launcher_width', 'launcher_border', 'launcher_separators', 'launcher_opacity', 'launcher_padding', 'launcher_prompt_padding', 'launcher_click_away', 'workspace_buttons', 'workspace_min_width', 'strip_workspace_numbers', 'strip_workspace_name', 'verbose', 'height', 'padding', 'colors', '}'
 ERROR: CONFIG: (in file <stdin>)
 ERROR: CONFIG: Line   1: bar {
 ERROR: CONFIG: Line   2:     output LVDS-1

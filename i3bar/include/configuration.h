@@ -57,6 +57,17 @@ typedef struct config_t {
     struct xcb_color_strings_t colors;
     bool disable_binding_mode_indicator;
     bool disable_ws;
+    bool launcher;
+    char *launcher_font;
+    char *launcher_background;
+    int launcher_lines;
+    int launcher_width;
+    int launcher_border;
+    bool launcher_separators;
+    int launcher_opacity;
+    int launcher_padding;
+    int launcher_prompt_padding;
+    bool launcher_click_away;
     int ws_min_width;
     bool strip_ws_numbers;
     bool strip_ws_name;

@@ -207,6 +207,20 @@ static int config_string_cb(void *params_, const unsigned char *val, size_t _len
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_background")) {
+        DLOG("launcher_background = %.*s\n", len, val);
+        FREE(config.launcher_background);
+        sasprintf(&config.launcher_background, "%.*s", len, val);
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_font")) {
+        DLOG("launcher_font = %.*s\n", len, val);
+        FREE(config.launcher_font);
+        sasprintf(&config.launcher_font, "%.*s", len, val);
+        return 1;
+    }
+
     if (!strcmp(cur_key, "separator_symbol")) {
         DLOG("separator = %.*s\n", len, val);
         I3STRING_FREE(config.separator_symbol);
@@ -295,6 +309,24 @@ static int config_boolean_cb(void *params_, int val) {
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_button")) {
+        DLOG("launcher_button = %d\n", val);
+        config.launcher = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_click_away")) {
+        DLOG("launcher_click_away = %d\n", val);
+        config.launcher_click_away = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_separators")) {
+        DLOG("launcher_separators = %d\n", val);
+        config.launcher_separators = val;
+        return 1;
+    }
+
     if (!strcmp(cur_key, "workspace_buttons")) {
         DLOG("workspace_buttons = %d\n", val);
         config.disable_ws = !val;
@@ -380,6 +412,42 @@ static int config_integer_cb(void *params_, long long val) {
     if (!strcmp(cur_key, "modifier")) {
         DLOG("modifier = %lld\n", val);
         config.modifier = (uint32_t)val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_lines")) {
+        DLOG("launcher_lines = %lld\n", val);
+        config.launcher_lines = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_prompt_padding")) {
+        DLOG("launcher_prompt_padding = %lld\n", val);
+        config.launcher_prompt_padding = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_padding")) {
+        DLOG("launcher_padding = %lld\n", val);
+        config.launcher_padding = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_opacity")) {
+        DLOG("launcher_opacity = %lld\n", val);
+        config.launcher_opacity = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_border")) {
+        DLOG("launcher_border = %lld\n", val);
+        config.launcher_border = val;
+        return 1;
+    }
+
+    if (!strcmp(cur_key, "launcher_width")) {
+        DLOG("launcher_width = %lld\n", val);
+        config.launcher_width = val;
         return 1;
     }
 

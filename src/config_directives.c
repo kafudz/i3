@@ -931,6 +931,52 @@ CFGFUN(bar_binding_mode_indicator, const char *value) {
     current_bar->hide_binding_mode_indicator = !boolstr(value);
 }
 
+CFGFUN(bar_launcher_button, const char *value) {
+    current_bar->launcher_button = boolstr(value);
+}
+
+CFGFUN(bar_launcher_background, const char *color) {
+    FREE(current_bar->launcher_background);
+    current_bar->launcher_background = sstrdup(color);
+}
+
+CFGFUN(bar_launcher_font, const char *font) {
+    FREE(current_bar->launcher_font);
+    current_bar->launcher_font = sstrdup(font);
+}
+
+CFGFUN(bar_launcher_lines, const long lines) {
+    current_bar->launcher_lines = lines;
+}
+
+CFGFUN(bar_launcher_width, const long width) {
+    current_bar->launcher_width = width;
+}
+
+CFGFUN(bar_launcher_border, const long width) {
+    current_bar->launcher_border = width;
+}
+
+CFGFUN(bar_launcher_prompt_padding, const long padding) {
+    current_bar->launcher_prompt_padding = padding;
+}
+
+CFGFUN(bar_launcher_padding, const long padding) {
+    current_bar->launcher_padding = padding;
+}
+
+CFGFUN(bar_launcher_click_away, const char *value) {
+    current_bar->launcher_click_away = boolstr(value);
+}
+
+CFGFUN(bar_launcher_opacity, const long opacity) {
+    current_bar->launcher_opacity = opacity;
+}
+
+CFGFUN(bar_launcher_separators, const char *value) {
+    current_bar->launcher_separators = boolstr(value);
+}
+
 CFGFUN(bar_workspace_buttons, const char *value) {
     current_bar->hide_workspace_buttons = !boolstr(value);
 }
@@ -953,6 +999,12 @@ CFGFUN(bar_start) {
     TAILQ_INIT(&(current_bar->tray_outputs));
     current_bar->tray_padding = 2;
     current_bar->modifier = XCB_KEY_BUT_MASK_MOD_4;
+    current_bar->launcher_border = 1;
+    current_bar->launcher_opacity = 100;
+    current_bar->launcher_padding = 8;
+    current_bar->launcher_prompt_padding = 8;
+    current_bar->launcher_click_away = true;
+    current_bar->launcher_separators = true;
 }
 
 CFGFUN(bar_finish) {

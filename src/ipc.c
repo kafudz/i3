@@ -852,6 +852,43 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
         ystr(config->separator_symbol);
     }
 
+    ystr("launcher_button");
+    y(bool, config->launcher_button);
+
+    if (config->launcher_font) {
+        ystr("launcher_font");
+        ystr(config->launcher_font);
+    }
+
+    if (config->launcher_background) {
+        ystr("launcher_background");
+        ystr(config->launcher_background);
+    }
+
+    ystr("launcher_lines");
+    y(integer, config->launcher_lines);
+
+    ystr("launcher_width");
+    y(integer, config->launcher_width);
+
+    ystr("launcher_border");
+    y(integer, config->launcher_border);
+
+    ystr("launcher_separators");
+    y(bool, config->launcher_separators);
+
+    ystr("launcher_opacity");
+    y(integer, config->launcher_opacity);
+
+    ystr("launcher_padding");
+    y(integer, config->launcher_padding);
+
+    ystr("launcher_prompt_padding");
+    y(integer, config->launcher_prompt_padding);
+
+    ystr("launcher_click_away");
+    y(bool, config->launcher_click_away);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 
