@@ -1944,7 +1944,9 @@ bar {
 
 i3bar can show a launcher button before the workspace buttons. Clicking it with
 the left mouse button runs +i3-dmenu-desktop+; clicking it again while the
-launcher is still open closes it. It is disabled by default.
+launcher is still open closes it. It is disabled by default. The button shows
+the i3 logo of the Nerd Fonts (+nf-linux-i3+), so the bar +font+ has to be a
+Nerd Font (or have one as a fallback).
 
 The application list is a vertical dmenu (font +monospace:size=12+) that stacks
 up from just above the button (down from just below it if the bar is at the

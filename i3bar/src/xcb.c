@@ -536,7 +536,8 @@ static int launcher_button_width(void) {
         return 0;
     }
     if (launcher_label == NULL) {
-        launcher_label = i3string_from_utf8("Apps");
+        /* nf-linux-i3 (U+F35A) of the Nerd Fonts; needs a Nerd Font in the bar font. */
+        launcher_label = i3string_from_utf8("\xef\x8d\x9a");
     }
     return predict_button_width(predict_text_width(launcher_label));
 }
