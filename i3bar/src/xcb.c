@@ -15,6 +15,7 @@
 #include <fcntl.h>
 #include <i3/ipc.h>
 #include <signal.h>
+#include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
@@ -535,7 +536,8 @@ static int launcher_button_width(void) {
         return 0;
     }
     if (launcher_label == NULL) {
-        launcher_label = i3string_from_utf8("Apps");
+        /* nf-linux-i3 (U+F35A) of the Nerd Fonts; needs a Nerd Font in the bar font. */
+        launcher_label = i3string_from_utf8("\xef\x8d\x9a");
     }
     return predict_button_width(predict_text_width(launcher_label));
 }
@@ -564,8 +566,9 @@ static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
     launcher_pid = -1;
 }
 
-/* Defaults for 'launcher_font', 'launcher_lines' and 'launcher_width'. */
+/* Defaults for the launcher options. */
 static const char *launcher_default_font = "monospace:size=12";
+static const char *launcher_default_background = "#121314";
 static const int launcher_default_lines = 15;
 static const int launcher_default_width_px = 300;
 
@@ -574,73 +577,152 @@ static int launcher_opacity(void) {
     return (config.launcher_opacity > 0 && config.launcher_opacity < 100) ? config.launcher_opacity : 100;
 }
 
-/* How much of what we would like to pass to dmenu the dmenu in $PATH knows. */
-enum {
-    LAUNCHER_DMENU_PLAIN = 0,    /* stock dmenu: no positioning */
-    LAUNCHER_DMENU_GEOMETRY = 1, /* -P, -x, -y, -z */
-    LAUNCHER_DMENU_FULL = 2,     /* additionally -L and -bw */
+/* Everything the dmenu command line of the launcher depends on. It is computed
+ * in i3bar itself (it needs fonts, the X connection and the bar geometry), so
+ * that the forked child only has to put the pieces together. */
+struct launcher_params {
+    const char *font;
+    const char *background;
+    int lines;
+    int width;          /* outer width of the list in pixels */
+    int x;              /* distance from the left edge of the output */
+    int y;              /* distance from the edge of the screen: the bar height */
+    int border;         /* pixels, 0 for none */
+    int padding;        /* extra height of each entry in pixels */
+    int prompt_padding; /* extra height of the input field in pixels */
+    int opacity;        /* percent, 100 is opaque */
+    bool bottom;        /* the bar is at the bottom, so the list stacks up */
+    bool separators;
+    bool click_away;
 };
 
+/* The options of dmenu that we may use. Stock dmenu has none of them; each one
+ * is only passed if the dmenu in $PATH supports it, so that an older dmenu
+ * (or a newer i3bar) never makes the launcher fail. */
+enum {
+    LAUNCHER_GEOMETRY = 1 << 0,       /* -P -x -y -z: place the list above the button */
+    LAUNCHER_BORDER = 1 << 1,         /* -bw */
+    LAUNCHER_SEPARATORS = 1 << 2,     /* -L */
+    LAUNCHER_ITEM_PADDING = 1 << 3,   /* -ip */
+    LAUNCHER_PROMPT_PADDING = 1 << 4, /* -pp */
+    LAUNCHER_CLICK_AWAY = 1 << 5,     /* -C */
+    LAUNCHER_OPACITY = 1 << 6,        /* -op */
+};
+
+/* Computes the parameters from the configuration. Must be called in the
+ * i3bar process, not in the forked child. */
+static void launcher_params_init(struct launcher_params *p) {
+    p->font = config.launcher_font ? config.launcher_font : launcher_default_font;
+    /* The font ends up inside single quotes in a shell command line. */
+    if (strpbrk(p->font, "'\"`$\\") != NULL) {
+        ELOG("Ignoring launcher_font \"%s\": it must not contain any of ' \" ` $ \\\n", p->font);
+        p->font = launcher_default_font;
+    }
+
+    p->background = config.launcher_background ? config.launcher_background
+                                               : launcher_default_background;
+    /* Also ends up in a shell command line, so only accept "#rrggbb". */
+    bool valid_color = (strlen(p->background) == 7 && p->background[0] == '#');
+    for (int i = 1; valid_color && i < 7; i++) {
+        valid_color = (strchr("0123456789abcdefABCDEF", p->background[i]) != NULL);
+    }
+    if (!valid_color) {
+        ELOG("Ignoring launcher_background \"%s\": it must look like #rrggbb\n", p->background);
+        p->background = launcher_default_background;
+    }
+
+    p->lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
+    const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
+                                                : logical_px(launcher_default_width_px);
+    p->width = MAX(launcher_button_width(), width);
+    p->x = logical_px(config.padding.x);
+    p->y = bar_height;
+    p->border = logical_px(MAX(config.launcher_border, 0));
+    p->padding = logical_px(MAX(config.launcher_padding, 0));
+    p->prompt_padding = logical_px(MAX(config.launcher_prompt_padding, 0));
+    p->opacity = launcher_opacity();
+    p->bottom = (config.position != POS_TOP);
+    p->separators = config.launcher_separators;
+    p->click_away = config.launcher_click_away;
+}
+
+/* The options of dmenu (LAUNCHER_*) that the configuration asks for. */
+static unsigned launcher_wanted_features(const struct launcher_params *p) {
+    unsigned wanted = LAUNCHER_GEOMETRY;
+    if (p->border > 0) {
+        wanted |= LAUNCHER_BORDER;
+    }
+    if (p->separators) {
+        wanted |= LAUNCHER_SEPARATORS;
+    }
+    if (p->padding > 0) {
+        wanted |= LAUNCHER_ITEM_PADDING;
+    }
+    if (p->prompt_padding > 0) {
+        wanted |= LAUNCHER_PROMPT_PADDING;
+    }
+    if (p->click_away) {
+        wanted |= LAUNCHER_CLICK_AWAY;
+    }
+    if (p->opacity < 100) {
+        wanted |= LAUNCHER_OPACITY;
+    }
+    return wanted;
+}
+
+static void launcher_append(char **cmd, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    char *part = NULL;
+    if (vasprintf(&part, fmt, ap) == -1) {
+        err(EXIT_FAILURE, "vasprintf()");
+    }
+    va_end(ap);
+    char *joined;
+    sasprintf(&joined, "%s%s", *cmd, part);
+    free(part);
+    free(*cmd);
+    *cmd = joined;
+}
+
 /*
- * Builds the dmenu command line for i3-dmenu-desktop for the given level of
- * dmenu support. A vertical list that stacks up from just above the launcher
- * button (or down from just below it, if the bar is at the top), at least as
- * wide as the button, and not covering the bar so that the button stays
- * clickable for closing it again. With full support it also has a border and
- * lines between the entries. Font, number of lines, width, border and lines
- * can be set with 'launcher_font', 'launcher_lines', 'launcher_width',
- * 'launcher_border' and 'launcher_separators'. With 'with_opacity', the
- * window is made translucent as set by 'launcher_opacity'. Without any positioning
- * support (a stock dmenu) it is a plain full-width list at the screen edge,
- * which covers the bar, but at least the launcher works.
+ * Builds the dmenu command line for i3-dmenu-desktop, using only those
+ * options of dmenu that are in 'features'. With all of them it is a vertical
+ * list that stacks up from just above the launcher button (or down from just
+ * below it, if the bar is at the top), at least as wide as the button, and not
+ * covering the bar so that the button stays clickable. Without -P/-x/-y/-z (a
+ * stock dmenu) it is a plain full-width list at the screen edge, which covers
+ * the bar, but at least the launcher works.
  *
  * The caller has to free() the result.
  */
-static char *launcher_dmenu_command(int level, bool with_opacity) {
-    const char *font = config.launcher_font ? config.launcher_font : launcher_default_font;
-    /* The font ends up inside single quotes in a shell command line. */
-    if (strpbrk(font, "'\"`$\\") != NULL) {
-        ELOG("Ignoring launcher_font \"%s\": it must not contain any of ' \" ` $ \\\n", font);
-        font = launcher_default_font;
-    }
-    const int lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
-    const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
-                                                : logical_px(launcher_default_width_px);
-    const char *bottom = (config.position != POS_TOP ? " -b" : "");
-
-    char *opacity = NULL;
-    if (with_opacity) {
-        sasprintf(&opacity, " -op %d", launcher_opacity());
-    } else {
-        opacity = sstrdup("");
-    }
-
+static char *launcher_build_command(const struct launcher_params *p, unsigned features) {
     char *cmd;
-    if (level == LAUNCHER_DMENU_PLAIN) {
-        sasprintf(&cmd, "dmenu -i -l %d -fn '%s'%s%s", lines, font, bottom, opacity);
-        free(opacity);
-        return cmd;
+    sasprintf(&cmd, "dmenu -i -l %d -fn '%s' -nb '%s'", p->lines, p->font, p->background);
+    if (p->bottom) {
+        launcher_append(&cmd, " -b");
     }
-
-    char *extra = NULL;
-    if (level >= LAUNCHER_DMENU_FULL) {
-        sasprintf(&extra, "%s -bw %d",
-                  (config.launcher_separators ? " -L" : ""),
-                  logical_px(MAX(config.launcher_border, 0)));
-    } else {
-        extra = sstrdup("");
+    if (features & LAUNCHER_GEOMETRY) {
+        launcher_append(&cmd, " -P -x %d -y %d -z %d", p->x, p->y, p->width);
     }
-    sasprintf(&cmd, "dmenu -i -P -l %d -fn '%s' -x %d -y %d -z %d%s%s%s",
-              lines,
-              font,
-              logical_px(config.padding.x),
-              bar_height,
-              MAX(launcher_button_width(), width),
-              bottom,
-              extra,
-              opacity);
-    free(extra);
-    free(opacity);
+    if (features & LAUNCHER_BORDER) {
+        launcher_append(&cmd, " -bw %d", p->border);
+    }
+    if (features & LAUNCHER_SEPARATORS) {
+        launcher_append(&cmd, " -L");
+    }
+    if (features & LAUNCHER_ITEM_PADDING) {
+        launcher_append(&cmd, " -ip %d", p->padding);
+    }
+    if (features & LAUNCHER_PROMPT_PADDING) {
+        launcher_append(&cmd, " -pp %d", p->prompt_padding);
+    }
+    if (features & LAUNCHER_CLICK_AWAY) {
+        launcher_append(&cmd, " -C");
+    }
+    if (features & LAUNCHER_OPACITY) {
+        launcher_append(&cmd, " -op %d", p->opacity);
+    }
     return cmd;
 }
 
@@ -672,26 +754,34 @@ static bool probe_dmenu(const char *const *args) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
-/* Returns the highest LAUNCHER_DMENU_* level the dmenu in $PATH supports. */
-static int launcher_dmenu_level(void) {
-    static const char *const full[] = {"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1",
-                                       "-L", "-bw", "0", "-v", NULL};
-    static const char *const geometry[] = {"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1",
-                                           "-v", NULL};
-    if (probe_dmenu(full)) {
-        return LAUNCHER_DMENU_FULL;
-    }
-    if (probe_dmenu(geometry)) {
-        return LAUNCHER_DMENU_GEOMETRY;
-    }
-    return LAUNCHER_DMENU_PLAIN;
-}
+/* How to test for each option of dmenu. The values are in the range that we
+ * are going to use (e.g. -op below 100): a dmenu with a bug for those values
+ * should be noticed here rather than crash when the launcher is opened. */
+static const struct {
+    unsigned feature;
+    const char *options;
+    const char *const *args;
+} launcher_features[] = {
+    {LAUNCHER_GEOMETRY, "-P/-x/-y/-z",
+     (const char *const[]){"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1", "-v", NULL}},
+    {LAUNCHER_BORDER, "-bw", (const char *const[]){"dmenu", "-bw", "1", "-v", NULL}},
+    {LAUNCHER_SEPARATORS, "-L", (const char *const[]){"dmenu", "-L", "-v", NULL}},
+    {LAUNCHER_ITEM_PADDING, "-ip", (const char *const[]){"dmenu", "-ip", "1", "-v", NULL}},
+    {LAUNCHER_PROMPT_PADDING, "-pp", (const char *const[]){"dmenu", "-pp", "1", "-v", NULL}},
+    {LAUNCHER_CLICK_AWAY, "-C", (const char *const[]){"dmenu", "-C", "-v", NULL}},
+    {LAUNCHER_OPACITY, "-op", (const char *const[]){"dmenu", "-op", "99", "-v", NULL}},
+};
 
-static void free_launcher_commands(char *commands[][2]) {
-    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_FULL; level++) {
-        free(commands[level][0]);
-        free(commands[level][1]);
+/* Returns those of the 'wanted' features that the dmenu in $PATH supports. Only
+ * wanted features are probed. Only called in the launcher's own child process. */
+static unsigned launcher_supported_features(unsigned wanted) {
+    unsigned supported = 0;
+    for (size_t i = 0; i < sizeof(launcher_features) / sizeof(launcher_features[0]); i++) {
+        if ((wanted & launcher_features[i].feature) && probe_dmenu(launcher_features[i].args)) {
+            supported |= launcher_features[i].feature;
+        }
     }
+    return supported;
 }
 
 /*
@@ -714,17 +804,14 @@ static void toggle_launcher(void) {
         return;
     }
 
-    /* Build the command lines before fork(): no allocations in the child. */
-    char *commands[LAUNCHER_DMENU_FULL + 1][2]; /* [level][with opacity?] */
-    for (int level = LAUNCHER_DMENU_PLAIN; level <= LAUNCHER_DMENU_FULL; level++) {
-        commands[level][0] = launcher_dmenu_command(level, false);
-        commands[level][1] = launcher_dmenu_command(level, true);
-    }
+    /* Everything that needs fonts or the X connection is done here, in the
+     * i3bar process: the child must not use our connection. */
+    struct launcher_params params;
+    launcher_params_init(&params);
 
     const pid_t pid = fork();
     if (pid == -1) {
         ELOG("Could not fork() to start the launcher: %s\n", strerror(errno));
-        free_launcher_commands(commands);
         return;
     }
     if (pid == 0) {
@@ -733,32 +820,24 @@ static void toggle_launcher(void) {
         setsid();
         signal(SIGPIPE, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
-        const int level = launcher_dmenu_level();
-        if (level < LAUNCHER_DMENU_FULL) {
-            ELOG("Your dmenu does not support all of -P/-x/-y/-z/-L/-bw, so the launcher list "
-                 "is limited (%s). Install a dmenu with these options "
-                 "(github.com/kafudz/dmenu, branch feature/geometry).\n",
-                 level == LAUNCHER_DMENU_GEOMETRY ? "no border or lines between entries"
-                                                  : "it cannot be placed above the button");
-        }
-        bool opacity = false;
-        if (launcher_opacity() < 100) {
-            /* Below 100 on purpose: that is the value range we are going to use. */
-            static const char *const op_args[] = {"dmenu", "-op", "99", "-v", NULL};
-            opacity = probe_dmenu(op_args);
-            if (!opacity) {
-                ELOG("Your dmenu does not support -op, so launcher_opacity has no effect. "
+
+        const unsigned wanted = launcher_wanted_features(&params);
+        const unsigned supported = launcher_supported_features(wanted);
+        for (size_t i = 0; i < sizeof(launcher_features) / sizeof(launcher_features[0]); i++) {
+            if ((wanted & ~supported) & launcher_features[i].feature) {
+                ELOG("Your dmenu does not support %s, so the launcher list is limited. "
                      "Install a dmenu with this option "
-                     "(github.com/kafudz/dmenu, branch feature/geometry).\n");
+                     "(github.com/kafudz/dmenu, branch feature/geometry).\n",
+                     launcher_features[i].options);
             }
         }
-        const char *command = commands[level][opacity ? 1 : 0];
+
+        char *command = launcher_build_command(&params, supported);
         DLOG("Starting launcher with dmenu command: %s\n", command);
         execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", command, (char *)NULL);
         ELOG("Could not execute i3-dmenu-desktop: %s\n", strerror(errno));
         _exit(EXIT_FAILURE);
     }
-    free_launcher_commands(commands);
 
     launcher_pid = pid;
     ev_child_init(&launcher_watcher, launcher_exited_cb, pid, 0);

@@ -357,6 +357,10 @@ struct Barconfig {
      * Configuration options are 'launcher_font', 'launcher_lines' and
      * 'launcher_width'; 0 or unset selects the default. */
     char *launcher_font;
+
+    /** Background color of the launcher's list as "#rrggbb" (default:
+     * #121314). Configuration option is 'launcher_background'. */
+    char *launcher_background;
     int launcher_lines;
     int launcher_width;
 
@@ -369,6 +373,16 @@ struct Barconfig {
     /** Opacity of the launcher's list in percent (default: 100). Needs a
      * compositing manager. Configuration option is 'launcher_opacity'. */
     int launcher_opacity;
+
+    /** Extra height in pixels of each entry of the launcher's list (default:
+     * 8) and whether a click outside of the list closes it (default: yes).
+     * Configuration options are 'launcher_padding' and 'launcher_click_away'. */
+    int launcher_padding;
+
+    /** Extra height in pixels of the launcher's input field (default: 8).
+     * Configuration option is 'launcher_prompt_padding'. */
+    int launcher_prompt_padding;
+    bool launcher_click_away;
 
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'
      * but we invert the bool to get the correct default when initializing with

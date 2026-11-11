@@ -860,6 +860,11 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
         ystr(config->launcher_font);
     }
 
+    if (config->launcher_background) {
+        ystr("launcher_background");
+        ystr(config->launcher_background);
+    }
+
     ystr("launcher_lines");
     y(integer, config->launcher_lines);
 
@@ -874,6 +879,15 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
 
     ystr("launcher_opacity");
     y(integer, config->launcher_opacity);
+
+    ystr("launcher_padding");
+    y(integer, config->launcher_padding);
+
+    ystr("launcher_prompt_padding");
+    y(integer, config->launcher_prompt_padding);
+
+    ystr("launcher_click_away");
+    y(bool, config->launcher_click_away);
 
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);

@@ -557,11 +557,15 @@ state BAR:
   'binding_mode_indicator' -> BAR_BINDING_MODE_INDICATOR
   'launcher_button'        -> BAR_LAUNCHER_BUTTON
   'launcher_font'          -> BAR_LAUNCHER_FONT
+  'launcher_background'    -> BAR_LAUNCHER_BACKGROUND
   'launcher_lines'         -> BAR_LAUNCHER_LINES
   'launcher_width'         -> BAR_LAUNCHER_WIDTH
   'launcher_border'        -> BAR_LAUNCHER_BORDER
   'launcher_separators'    -> BAR_LAUNCHER_SEPARATORS
   'launcher_opacity'       -> BAR_LAUNCHER_OPACITY
+  'launcher_padding'       -> BAR_LAUNCHER_PADDING
+  'launcher_prompt_padding' -> BAR_LAUNCHER_PROMPT_PADDING
+  'launcher_click_away'    -> BAR_LAUNCHER_CLICK_AWAY
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
   'strip_workspace_numbers' -> BAR_STRIP_WORKSPACE_NUMBERS
@@ -678,6 +682,10 @@ state BAR_LAUNCHER_FONT:
   font = string
       -> call cfg_bar_launcher_font($font); BAR
 
+state BAR_LAUNCHER_BACKGROUND:
+  color = word
+      -> call cfg_bar_launcher_background($color); BAR
+
 state BAR_LAUNCHER_LINES:
   lines = number
       -> call cfg_bar_launcher_lines(&lines); BAR
@@ -701,6 +709,30 @@ state BAR_LAUNCHER_BORDER_PX:
       ->
   end
       -> call cfg_bar_launcher_border(&width); BAR
+
+state BAR_LAUNCHER_PADDING:
+  padding = number
+      -> BAR_LAUNCHER_PADDING_PX
+
+state BAR_LAUNCHER_PADDING_PX:
+  'px'
+      ->
+  end
+      -> call cfg_bar_launcher_padding(&padding); BAR
+
+state BAR_LAUNCHER_PROMPT_PADDING:
+  padding = number
+      -> BAR_LAUNCHER_PROMPT_PADDING_PX
+
+state BAR_LAUNCHER_PROMPT_PADDING_PX:
+  'px'
+      ->
+  end
+      -> call cfg_bar_launcher_prompt_padding(&padding); BAR
+
+state BAR_LAUNCHER_CLICK_AWAY:
+  value = word
+      -> call cfg_bar_launcher_click_away($value); BAR
 
 state BAR_LAUNCHER_OPACITY:
   opacity = number
