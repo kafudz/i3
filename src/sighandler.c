@@ -75,11 +75,13 @@ static int sighandler_backtrace(void) {
 
         if (pipe(stdin_pipe) == -1) {
             ELOG("Failed to init stdin_pipe\n");
-            return -1;
+            _exit(EXIT_FAILURE);
         }
         if (pipe(stdout_pipe) == -1) {
             ELOG("Failed to init stdout_pipe\n");
-            return -1;
+            close(stdin_pipe[0]);
+            close(stdin_pipe[1]);
+            _exit(EXIT_FAILURE);
         }
 
         /* close standard streams in case i3 is started from a terminal; gdb

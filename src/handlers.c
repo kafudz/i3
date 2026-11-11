@@ -466,6 +466,7 @@ static void handle_screen_change(xcb_generic_event_t *e) {
 
     croot->rect.width = reply->width;
     croot->rect.height = reply->height;
+    free(reply);
 
     randr_query_outputs();
 

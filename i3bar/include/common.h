@@ -84,6 +84,9 @@ struct status_block {
 };
 
 extern TAILQ_HEAD(statusline_head, status_block) statusline_head;
+/* Temporarily holds blocks while a statusline is being parsed. It
+ * exclusively owns its blocks (see stdin_end_array() in child.c). */
+extern struct statusline_head statusline_buffer;
 
 #include "child.h"
 #include "ipc.h"

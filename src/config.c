@@ -106,6 +106,9 @@ static void free_configuration(void) {
         FREE(barconfig->workspace_command);
         FREE(barconfig->i3bar_command);
         FREE(barconfig->font);
+        FREE(barconfig->separator_symbol);
+        FREE(barconfig->launcher_font);
+        FREE(barconfig->launcher_background);
         FREE(barconfig->colors.background);
         FREE(barconfig->colors.statusline);
         FREE(barconfig->colors.separator);

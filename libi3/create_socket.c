@@ -41,6 +41,7 @@ int create_socket(const char *filename, char **out_socketpath) {
     if (sockfd != -1) {
         ELOG("Refusing to create UNIX socket at %s: Socket is already in use\n", resolved);
         close(sockfd);
+        free(resolved);
         errno = EEXIST;
         return -1;
     }
@@ -63,6 +64,7 @@ int create_socket(const char *filename, char **out_socketpath) {
     strncpy(addr.sun_path, resolved, sizeof(addr.sun_path) - 1);
     if (bind(sockfd, (struct sockaddr *)&addr, sizeof(struct sockaddr_un)) < 0) {
         perror("bind()");
+        close(sockfd);
         free(resolved);
         return -1;
     }
@@ -71,6 +73,7 @@ int create_socket(const char *filename, char **out_socketpath) {
 
     if (listen(sockfd, 5) < 0) {
         perror("listen()");
+        close(sockfd);
         free(resolved);
         return -1;
     }

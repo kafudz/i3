@@ -529,6 +529,11 @@ static int predict_button_width(int name_width) {
 }
 
 static i3String *launcher_label = NULL;
+/* Cached width of the launcher label, or -1 if it needs to be (re)computed.
+ * Measuring text is expensive (it involves font shaping), but the label is
+ * fixed, so its width only changes when the font changes — see
+ * init_xcb_late(), which resets this cache. */
+static int launcher_label_width = -1;
 
 /* Width of the launcher button itself (0 if the launcher is disabled). */
 static int launcher_button_width(void) {
@@ -539,7 +544,10 @@ static int launcher_button_width(void) {
         /* nf-linux-i3 (U+F35A) of the Nerd Fonts; needs a Nerd Font in the bar font. */
         launcher_label = i3string_from_utf8("\xef\x8d\x9a");
     }
-    return predict_button_width(predict_text_width(launcher_label));
+    if (launcher_label_width < 0) {
+        launcher_label_width = predict_text_width(launcher_label);
+    }
+    return predict_button_width(launcher_label_width);
 }
 
 /* Horizontal space taken by the launcher button including the gap to the
@@ -564,6 +572,26 @@ static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
         DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
     }
     launcher_pid = -1;
+}
+
+/* Kills a running launcher (its whole process group, so that the dmenu it
+ * spawned dies with it) and frees the launcher button's label. Called when
+ * i3bar exits or restarts: without this, a launcher started by us would stay
+ * on screen forever, because it lives in its own session. */
+static void launcher_cleanup(void) {
+    if (launcher_pid > 0) {
+        DLOG("Terminating launcher (pid %d)\n", (int)launcher_pid);
+        if (kill(-launcher_pid, SIGTERM) == -1 && errno != ESRCH) {
+            ELOG("Could not close launcher (pid %d): %s\n", (int)launcher_pid, strerror(errno));
+        }
+        /* We are on an exit path (the event loop will not run again), so
+         * nothing may use the pid anymore. Resetting it also makes a second
+         * call (atexit after clean_xcb) a no-op and avoids signaling an
+         * unrelated process in case the pid gets reused. */
+        launcher_pid = -1;
+    }
+    I3STRING_FREE(launcher_label);
+    launcher_label_width = -1;
 }
 
 /* Defaults for the launcher options. */
@@ -748,8 +776,11 @@ static bool probe_dmenu(const char *const *args) {
         _exit(127);
     }
     int status = 0;
-    if (waitpid(probe, &status, 0) != probe) {
-        return true;
+    while (waitpid(probe, &status, 0) == -1) {
+        if (errno != EINTR) {
+            return true; /* can't tell, assume that it works */
+        }
+        /* The wait was interrupted by a signal, try again. */
     }
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
@@ -820,6 +851,16 @@ static void toggle_launcher(void) {
         setsid();
         signal(SIGPIPE, SIG_DFL);
         signal(SIGCHLD, SIG_DFL);
+
+        /* Do not leak our file descriptors (the X connection, the IPC socket
+         * to i3, the pipes of the status command) into the launcher: while it
+         * holds e.g. the xcb fd, our bar windows would stay alive on the X
+         * server even after we exited, and the status command would not see
+         * EOF on its stdin when we close it. */
+        const int max_fd = (int)sysconf(_SC_OPEN_MAX);
+        for (int close_fd = 3; close_fd < max_fd; close_fd++) {
+            close(close_fd);
+        }
 
         const unsigned wanted = launcher_wanted_features(&params);
         const unsigned supported = launcher_supported_features(wanted);
@@ -1165,6 +1206,7 @@ static void handle_client_message(xcb_client_message_event_t *event) {
                 free(xembedr);
             } else {
                 ELOG("Window %08x violates the XEMBED protocol, _XEMBED_INFO not set\n", client);
+                free(xembedr);
             }
 
             DLOG("X window %08x requested docking\n", client);
@@ -1305,6 +1347,7 @@ static void handle_property_notify(xcb_property_notify_event_t *event) {
                                                                    NULL);
         if (xembedr == NULL || xembedr->length == 0) {
             DLOG("xembed_info unset\n");
+            free(xembedr);
             return;
         }
 
@@ -1500,6 +1543,10 @@ char *init_xcb_early(void) {
     ev_io_start(main_loop, xcb_io);
     ev_prepare_start(main_loop, xcb_prep);
 
+    /* Also terminate a running launcher if we exit via a path that does not
+     * call clean_xcb() (e.g. a fatal error). */
+    atexit(launcher_cleanup);
+
     get_atoms();
 
     char *path = root_atom_contents("I3_SOCKET_PATH", xcb_connection, screen);
@@ -1566,6 +1613,10 @@ void init_xcb_late(char *fontname) {
     if (config.separator_symbol) {
         separator_symbol_width = predict_text_width(config.separator_symbol);
     }
+
+    /* The font changed, so the cached width of the launcher label (if any)
+     * is stale and must be measured again with the new font. */
+    launcher_label_width = -1;
 
     xcb_flush(xcb_connection);
 
@@ -1704,6 +1755,7 @@ void init_tray_colors(void) {
 }
 
 void clean_xcb(void) {
+    launcher_cleanup();
     free_outputs();
     free_font();
     xcb_free_cursor(xcb_connection, cursor);
@@ -2105,7 +2157,7 @@ void draw_bars(bool unhide) {
             const int w = launcher_button_width();
             draw_button(&(outputs_walk->buffer), colors.inactive_ws_fg, colors.inactive_ws_bg,
                         colors.inactive_ws_border, workspace_width, w,
-                        predict_text_width(launcher_label), launcher_label);
+                        launcher_label_width, launcher_label);
             workspace_width += launcher_total_width();
         }
 

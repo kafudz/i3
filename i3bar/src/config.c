@@ -475,6 +475,30 @@ static yajl_callbacks outputs_callbacks = {
  *
  */
 void parse_config_json(const unsigned char *json, size_t size) {
+    /* This function is called again on barconfig_update events, so free
+     * the values of the previous configuration first. */
+    for (int c = 0; c < config.num_outputs; c++) {
+        FREE(config.outputs[c]);
+    }
+    FREE(config.outputs);
+    config.num_outputs = 0;
+
+    binding_t *binding;
+    while (!TAILQ_EMPTY(&(config.bindings))) {
+        binding = TAILQ_FIRST(&(config.bindings));
+        FREE(binding->command);
+        TAILQ_REMOVE(&(config.bindings), binding, bindings);
+        free(binding);
+    }
+
+    tray_output_t *tray_output;
+    while (!TAILQ_EMPTY(&(config.tray_outputs))) {
+        tray_output = TAILQ_FIRST(&(config.tray_outputs));
+        FREE(tray_output->output);
+        TAILQ_REMOVE(&(config.tray_outputs), tray_output, tray_outputs);
+        free(tray_output);
+    }
+
     TAILQ_INIT(&(config.bindings));
     TAILQ_INIT(&(config.tray_outputs));
 

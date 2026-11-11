@@ -29,7 +29,9 @@ struct mode_json_params {
 static int mode_string_cb(void *params_, const unsigned char *val, size_t len) {
     struct mode_json_params *params = (struct mode_json_params *)params_;
 
-    if (!strcmp(params->cur_key, "change")) {
+    if (params->cur_key != NULL && !strcmp(params->cur_key, "change")) {
+        /* The key might occur multiple times, free the previous value. */
+        FREE(params->name);
         sasprintf(&(params->name), "%.*s", (int)len, val);
         FREE(params->cur_key);
         return 1;
@@ -46,7 +48,7 @@ static int mode_string_cb(void *params_, const unsigned char *val, size_t len) {
 static int mode_boolean_cb(void *params_, int val) {
     struct mode_json_params *params = (struct mode_json_params *)params_;
 
-    if (strcmp(params->cur_key, "pango_markup") == 0) {
+    if (params->cur_key != NULL && strcmp(params->cur_key, "pango_markup") == 0) {
         DLOG("Setting pango_markup to %d.\n", val);
         params->pango_markup = val;
 
@@ -74,7 +76,15 @@ static int mode_map_key_cb(void *params_, const unsigned char *keyVal, size_t ke
 static int mode_end_map_cb(void *params_) {
     struct mode_json_params *params = (struct mode_json_params *)params_;
 
+    if (params->name == NULL) {
+        /* The mode event did not contain a name: treat it as the default
+         * mode (i.e. no mode indicator) instead of crashing. */
+        FREE(params->cur_key);
+        return 1;
+    }
+
     /* Save the name */
+    I3STRING_FREE(params->mode->name);
     params->mode->name = i3string_from_utf8(params->name);
     i3string_set_markup(params->mode->name, params->pango_markup);
     /* Save its rendered width */
@@ -101,26 +111,30 @@ static yajl_callbacks mode_callbacks = {
 void parse_mode_json(const unsigned char *json, size_t size) {
     struct mode_json_params params;
     mode binding;
-    params.cur_key = NULL;
+    memset(&params, '\0', sizeof(params));
+    memset(&binding, '\0', sizeof(binding));
     params.mode = &binding;
 
     yajl_handle handle = yajl_alloc(&mode_callbacks, NULL, (void *)&params);
     yajl_status state = yajl_parse(handle, json, size);
 
-    /* FIXME: Proper error handling for JSON parsing */
     switch (state) {
         case yajl_status_ok:
             break;
         case yajl_status_client_canceled:
         case yajl_status_error:
+            /* Rather than exiting on a malformed event, keep the current
+             * mode and carry on. */
             ELOG("Could not parse mode event!\n");
-            exit(EXIT_FAILURE);
-            break;
+            yajl_free(handle);
+            FREE(params.cur_key);
+            FREE(params.name);
+            return;
     }
 
     /* We don't want to indicate default binding mode */
-    if (strcmp("default", i3string_as_utf8(params.mode->name)) == 0) {
-        I3STRING_FREE(params.mode->name);
+    if (binding.name != NULL && strcmp("default", i3string_as_utf8(binding.name)) == 0) {
+        I3STRING_FREE(binding.name);
     }
 
     /* Set the new binding mode */
@@ -129,4 +143,5 @@ void parse_mode_json(const unsigned char *json, size_t size) {
     yajl_free(handle);
 
     FREE(params.cur_key);
+    FREE(params.name);
 }

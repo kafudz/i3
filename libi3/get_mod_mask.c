@@ -77,5 +77,6 @@ uint32_t get_mod_mask_for(uint32_t keysym,
         }
     }
 
+    free(codes);
     return 0;
 }

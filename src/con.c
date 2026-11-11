@@ -2569,6 +2569,7 @@ i3String *con_parse_title_format(Con *con) {
     free(title);
     free(class);
     free(instance);
+    free(machine);
 
     return formatted;
 }

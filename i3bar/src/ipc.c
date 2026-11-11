@@ -246,6 +246,9 @@ static void got_bar_config_update(const unsigned char *event, size_t size) {
     if (!status_child_is_alive() || strings_differ(old_command, config.command)) {
         kill_child();
         clear_statusline(&statusline_head, true);
+        /* Drop partially parsed blocks from the buffer as well (the buffer
+         * exclusively owns its blocks, see stdin_end_array()). */
+        clear_statusline(&statusline_buffer, true);
         start_child(config.command);
     }
     free(old_command);
@@ -288,6 +291,10 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
     while (rec < header_len) {
         const int n = read(fd, header + rec, header_len - rec);
         if (n == -1) {
+            if (errno == EINTR) {
+                /* A signal interrupted the read, just try again. */
+                continue;
+            }
             ELOG("read() failed: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -328,6 +335,10 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
     while (rec < size) {
         int n = read(fd, buffer + rec, size - rec);
         if (n == -1) {
+            if (errno == EINTR) {
+                /* A signal interrupted the read, just try again. */
+                continue;
+            }
             ELOG("read() failed: %s\n", strerror(errno));
             exit(EXIT_FAILURE);
         }
@@ -342,10 +353,21 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
     /* And call the callback (indexed by the type) */
     if (type & (1UL << 31)) {
         type ^= 1UL << 31;
-        event_handlers[type](buffer, size);
+        /* We cannot blindly index the array: a type we do not know (e.g.
+         * from a newer i3) would read past the array and call a garbage
+         * pointer. */
+        if (type < sizeof(event_handlers) / sizeof(event_handlers[0]) &&
+            event_handlers[type] != NULL) {
+            event_handlers[type](buffer, size);
+        } else {
+            DLOG("Received unknown event type %d, ignoring it\n", type);
+        }
     } else {
-        if (reply_handlers[type]) {
+        if (type < sizeof(reply_handlers) / sizeof(reply_handlers[0]) &&
+            reply_handlers[type]) {
             reply_handlers[type](buffer, size);
+        } else {
+            DLOG("Received unknown reply type %d, ignoring it\n", type);
         }
     }
 

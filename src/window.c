@@ -203,6 +203,16 @@ void window_update_strut_partial(i3Window *win, xcb_get_property_reply_t *prop) 
         return;
     }
 
+    /* The property consists of at least 12 cardinals (of which we only use
+     * the first four): left, right, top, bottom, followed by per-edge
+     * start/end coordinates. Anything shorter is malformed and reading
+     * strut[0..3] would access out-of-bounds memory. */
+    if (xcb_get_property_value_length(prop) < 4 * (int)sizeof(uint32_t)) {
+        DLOG("_NET_WM_STRUT_PARTIAL is too short, ignoring it.\n");
+        free(prop);
+        return;
+    }
+
     DLOG("Reserved pixels changed to: left = %d, right = %d, top = %d, bottom = %d\n",
          strut[0], strut[1], strut[2], strut[3]);
 

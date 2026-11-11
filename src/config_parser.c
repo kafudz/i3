@@ -779,20 +779,41 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
      * variables (otherwise we will count them twice, which is bad when
      * 'extra' is negative) */
     char *bufcopy = sstrdup(buf);
-    SLIST_FOREACH (current, &(ctx->variables), variables) {
-        const int extra = (strlen(current->value) - strlen(current->key));
-        for (char *next = bufcopy;
-             next < (bufcopy + buf_len) &&
-             (next = strcasestr(next, current->key)) != NULL;) {
-            /* We need to invalidate variables completely (otherwise we may count
-             * the same variable more than once, thus causing buffer overflow or
-             * allocation failure) with spaces (variable names cannot contain spaces) */
-            const char *end = next + strlen(current->key);
-            while (next < end) {
-                *next++ = ' ';
+    /* Simulate the replacement below: walk through the buffer exactly like
+     * the replacement pass does (leftmost match wins, ties are broken by
+     * variable order, i.e. longest name first) and count the extra bytes
+     * for each replacement. A per-variable count would diverge from the
+     * actual replacements for overlapping variable names (e.g. $$ and $a
+     * occurring in "…$$a…"), producing a too-small allocation and thus a
+     * heap buffer overflow. */
+    for (char *position = bufcopy;
+         position < (bufcopy + buf_len);) {
+        struct Variable *nearest = NULL;
+        char *match = NULL;
+        SLIST_FOREACH (current, &(ctx->variables), variables) {
+            char *current_match = strcasestr(position, current->key);
+            if (current_match == NULL) {
+                continue;
             }
-            extra_bytes += extra;
+            if (match == NULL || current_match < match) {
+                match = current_match;
+                nearest = current;
+            }
         }
+        if (match == NULL) {
+            /* If there are no more variables, we are done counting */
+            break;
+        }
+        /* We need to invalidate variables completely (otherwise we may count
+         * the same variable more than once, thus causing buffer overflow or
+         * allocation failure) with spaces (variable names cannot contain spaces) */
+        const size_t key_len = strlen(nearest->key);
+        extra_bytes += (strlen(nearest->value) - key_len);
+        char *end = match + key_len;
+        while (match < end) {
+            *match++ = ' ';
+        }
+        position = end;
     }
     FREE(bufcopy);
 

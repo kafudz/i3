@@ -296,6 +296,9 @@ struct Startup_Sequence {
 struct regex {
     char *pattern;
     pcre2_code *regex;
+    /* Reused by regex_matches() to avoid allocating match data on every
+     * call (it is called for every window property change). */
+    pcre2_match_data *match_data;
 };
 
 /**

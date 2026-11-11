@@ -37,6 +37,13 @@ struct regex *regex_new(const char *pattern) {
         regex_free(re);
         return NULL;
     }
+
+    if (!(re->match_data = pcre2_match_data_create_from_pattern(re->regex, NULL))) {
+        ELOG("Could not allocate match data for pattern \"%s\"\n", pattern);
+        regex_free(re);
+        return NULL;
+    }
+
     return re;
 }
 
@@ -49,7 +56,12 @@ void regex_free(struct regex *regex) {
         return;
     }
     FREE(regex->pattern);
-    FREE(regex->regex);
+    if (regex->regex != NULL) {
+        pcre2_code_free(regex->regex);
+    }
+    if (regex->match_data != NULL) {
+        pcre2_match_data_free(regex->match_data);
+    }
     FREE(regex);
 }
 
@@ -60,12 +72,9 @@ void regex_free(struct regex *regex) {
  *
  */
 bool regex_matches(const struct regex *regex, const char *input) {
-    pcre2_match_data *match_data = pcre2_match_data_create_from_pattern(regex->regex, NULL);
-
     /* We use strlen() because pcre_exec() expects the length of the input
      * string in bytes */
-    const int rc = pcre2_match(regex->regex, (PCRE2_SPTR)input, strlen(input), 0, 0, match_data, NULL);
-    pcre2_match_data_free(match_data);
+    const int rc = pcre2_match(regex->regex, (PCRE2_SPTR)input, strlen(input), 0, 0, regex->match_data, NULL);
     if (rc > 0) {
         LOG("Regular expression \"%s\" matches \"%s\"\n",
             regex->pattern, input);

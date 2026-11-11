@@ -127,7 +127,9 @@ static Rect adjust_rect(Rect rect, direction_t direction, uint32_t threshold) {
 
 static bool con_on_side_of_parent(Con *con, direction_t direction) {
     const orientation_t orientation = orientation_from_direction(direction);
-    direction_t reverse_direction;
+    /* Initialize to avoid using an uninitialized value if direction is not
+     * one of the four cardinal directions. */
+    direction_t reverse_direction = direction;
     switch (direction) {
         case D_LEFT:
             reverse_direction = D_RIGHT;

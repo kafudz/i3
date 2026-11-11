@@ -122,6 +122,10 @@ static void copy_statusline(struct statusline_head *from, struct statusline_head
  */
 __attribute__((format(printf, 1, 2))) static void set_statusline_error(const char *format, ...) {
     clear_statusline(&statusline_head, true);
+    /* Drop any partially parsed blocks as well. Since stdin_end_array()
+     * empties the buffer after copying, the buffer exclusively owns its
+     * blocks, so freeing their resources here is safe. */
+    clear_statusline(&statusline_buffer, true);
 
     char *message;
     va_list args;
@@ -182,9 +186,9 @@ static void cleanup(i3bar_child *c) {
  * previous entries from the buffer.
  */
 static int stdin_start_array(void *context) {
-    // the blocks are still used by statusline_head, so we won't free the
-    // resources here.
-    clear_statusline(&statusline_buffer, false);
+    // The buffer exclusively owns its blocks (stdin_end_array() empties it
+    // after copying), so we can free the resources here.
+    clear_statusline(&statusline_buffer, true);
     return 1;
 }
 
@@ -245,23 +249,30 @@ static int stdin_string(void *context, const unsigned char *val, size_t len) {
         return 0;
     }
 
+    /* Free the previous value first: the JSON might contain duplicate keys
+     * and we don’t want to leak the old one. */
     if (strcasecmp(ctx->last_map_key, "full_text") == 0) {
+        I3STRING_FREE(ctx->block.full_text);
         ctx->block.full_text = i3string_from_markup_with_length((const char *)val, len);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "short_text") == 0) {
+        I3STRING_FREE(ctx->block.short_text);
         ctx->block.short_text = i3string_from_markup_with_length((const char *)val, len);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "color") == 0) {
+        FREE(ctx->block.color);
         sasprintf(&(ctx->block.color), "%.*s", (int)len, val);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "background") == 0) {
+        FREE(ctx->block.background);
         sasprintf(&(ctx->block.background), "%.*s", (int)len, val);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "border") == 0) {
+        FREE(ctx->block.border);
         sasprintf(&(ctx->block.border), "%.*s", (int)len, val);
         return 1;
     }
@@ -280,14 +291,17 @@ static int stdin_string(void *context, const unsigned char *val, size_t len) {
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "min_width") == 0) {
+        FREE(ctx->block.min_width_str);
         sasprintf(&(ctx->block.min_width_str), "%.*s", (int)len, val);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "name") == 0) {
+        FREE(ctx->block.name);
         sasprintf(&(ctx->block.name), "%.*s", (int)len, val);
         return 1;
     }
     if (strcasecmp(ctx->last_map_key, "instance") == 0) {
+        FREE(ctx->block.instance);
         sasprintf(&(ctx->block.instance), "%.*s", (int)len, val);
         return 1;
     }
@@ -374,6 +388,9 @@ static int stdin_end_array(void *context) {
     DLOG("copying statusline_buffer to statusline_head\n");
     clear_statusline(&statusline_head, true);
     copy_statusline(&statusline_buffer, &statusline_head);
+    /* From here on, statusline_head exclusively owns the (shallow-copied)
+     * blocks, so we can empty the buffer without freeing resources. */
+    clear_statusline(&statusline_buffer, false);
 
     DLOG("dumping statusline:\n");
     struct status_block *current;
@@ -400,6 +417,10 @@ static unsigned char *get_buffer(int fd, int *ret_buffer_len) {
     while (1) {
         const ssize_t n = read(fd, buffer + rec, buffer_len - rec);
         if (n == -1) {
+            if (errno == EINTR) {
+                /* A signal interrupted the read, just try again. */
+                continue;
+            }
             if (errno == EAGAIN) {
                 /* finish up */
                 break;
@@ -779,6 +800,17 @@ void start_child(char *command) {
         .yajl_start_array = stdin_start_array,
         .yajl_end_array = stdin_end_array,
     };
+    /* Free the parser and generator of a previous status_command, if any:
+     * i3bar restarts the status_command on bar config updates and would
+     * otherwise leak them. */
+    if (parser != NULL) {
+        yajl_free(parser);
+        parser = NULL;
+    }
+    if (gen != NULL) {
+        yajl_gen_free(gen);
+        gen = NULL;
+    }
     parser = yajl_alloc(&callbacks, NULL, &parser_context);
     gen = yajl_gen_alloc(NULL);
 
