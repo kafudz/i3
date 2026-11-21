@@ -20,6 +20,7 @@ struct mode_json_params {
     char *name;
     bool pango_markup;
     mode *mode;
+    bool has_name;
 };
 
 /*
@@ -33,6 +34,7 @@ static int mode_string_cb(void *params_, const unsigned char *val, size_t len) {
         /* The key might occur multiple times, free the previous value. */
         FREE(params->name);
         sasprintf(&(params->name), "%.*s", (int)len, val);
+        params->has_name = true;
         FREE(params->cur_key);
         return 1;
     }
@@ -76,9 +78,11 @@ static int mode_map_key_cb(void *params_, const unsigned char *keyVal, size_t ke
 static int mode_end_map_cb(void *params_) {
     struct mode_json_params *params = (struct mode_json_params *)params_;
 
-    if (params->name == NULL) {
-        /* The mode event did not contain a name: treat it as the default
-         * mode (i.e. no mode indicator) instead of crashing. */
+    if (!params->has_name) {
+        /* No "change" key in the event: switch back to the default mode
+         * (no indicator), just like i3 does when leaving a binding mode. */
+        I3STRING_FREE(params->mode->name);
+        params->mode->name_width = 0;
         FREE(params->cur_key);
         return 1;
     }
@@ -135,6 +139,7 @@ void parse_mode_json(const unsigned char *json, size_t size) {
     /* We don't want to indicate default binding mode */
     if (binding.name != NULL && strcmp("default", i3string_as_utf8(binding.name)) == 0) {
         I3STRING_FREE(binding.name);
+        binding.name_width = 0;
     }
 
     /* Set the new binding mode */

@@ -1948,11 +1948,11 @@ launcher is still open closes it. It is disabled by default. The button shows
 the i3 logo of the Nerd Fonts (+nf-linux-i3+), so the bar +font+ has to be a
 Nerd Font (or have one as a fallback).
 
-The application list is a vertical dmenu (font +monospace:size=12+) that stacks
-up from just above the button (down from just below it if the bar is at the
-top), so it does not cover the bar. This needs a dmenu which supports the
-+-P+, +-x+, +-y+ and +-z+ options (for example the dmenu from
-https://github.com/kafudz/dmenu, branch +feature/geometry+).
+The application list is a vertical dmenu (font +monospace:size=12+) that opens
+centered horizontally at the top of the output whose launcher button was
+clicked; with a top bar it is placed just below the bar. This needs a dmenu
+which supports the +-P+, +-x+, +-y+ and +-z+ options (for example the
+dmenu from https://github.com/kafudz/dmenu, branch +feature/geometry+).
 
 The font, the number of lines, the width, the border and the lines between the
 entries of the list can be changed. The defaults are +monospace:size=12+, 15

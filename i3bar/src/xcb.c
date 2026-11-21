@@ -613,13 +613,12 @@ struct launcher_params {
     const char *background;
     int lines;
     int width;          /* outer width of the list in pixels */
-    int x;              /* distance from the left edge of the output */
-    int y;              /* distance from the edge of the screen: the bar height */
+    int x;              /* left edge of the list, relative to the output */
+    int y;              /* top edge of the list, relative to the output */
     int border;         /* pixels, 0 for none */
     int padding;        /* extra height of each entry in pixels */
     int prompt_padding; /* extra height of the input field in pixels */
     int opacity;        /* percent, 100 is opaque */
-    bool bottom;        /* the bar is at the bottom, so the list stacks up */
     bool separators;
     bool click_away;
 };
@@ -628,7 +627,7 @@ struct launcher_params {
  * is only passed if the dmenu in $PATH supports it, so that an older dmenu
  * (or a newer i3bar) never makes the launcher fail. */
 enum {
-    LAUNCHER_GEOMETRY = 1 << 0,       /* -P -x -y -z: place the list above the button */
+    LAUNCHER_GEOMETRY = 1 << 0,       /* -P -x -y -z: place the list at the top center of the output */
     LAUNCHER_BORDER = 1 << 1,         /* -bw */
     LAUNCHER_SEPARATORS = 1 << 2,     /* -L */
     LAUNCHER_ITEM_PADDING = 1 << 3,   /* -ip */
@@ -639,7 +638,7 @@ enum {
 
 /* Computes the parameters from the configuration. Must be called in the
  * i3bar process, not in the forked child. */
-static void launcher_params_init(struct launcher_params *p) {
+static void launcher_params_init(struct launcher_params *p, i3_output *output) {
     p->font = config.launcher_font ? config.launcher_font : launcher_default_font;
     /* The font ends up inside single quotes in a shell command line. */
     if (strpbrk(p->font, "'\"`$\\") != NULL) {
@@ -663,13 +662,21 @@ static void launcher_params_init(struct launcher_params *p) {
     const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
                                                 : logical_px(launcher_default_width_px);
     p->width = MAX(launcher_button_width(), width);
-    p->x = logical_px(config.padding.x);
-    p->y = bar_height;
+
+    /* Center the list horizontally at the top of the clicked output. dmenu's
+     * -x/-y are offsets relative to the monitor selected by -P (the one under
+     * the pointer, i.e. the one whose button was clicked), so use coordinates
+     * relative to that output, not root-window coordinates. Guard against an
+     * output smaller than the list by clamping to 0, so we never pass a
+     * negative offset to dmenu. */
+    const int output_width = (output != NULL ? (int)output->rect.w : 0);
+    p->x = MAX(0, (output_width - p->width) / 2);
+    /* With a top bar, start below the bar instead of covering it. */
+    p->y = (config.position == POS_TOP ? bar_height : 0);
     p->border = logical_px(MAX(config.launcher_border, 0));
     p->padding = logical_px(MAX(config.launcher_padding, 0));
     p->prompt_padding = logical_px(MAX(config.launcher_prompt_padding, 0));
     p->opacity = launcher_opacity();
-    p->bottom = (config.position != POS_TOP);
     p->separators = config.launcher_separators;
     p->click_away = config.launcher_click_away;
 }
@@ -716,20 +723,17 @@ static void launcher_append(char **cmd, const char *fmt, ...) {
 /*
  * Builds the dmenu command line for i3-dmenu-desktop, using only those
  * options of dmenu that are in 'features'. With all of them it is a vertical
- * list that stacks up from just above the launcher button (or down from just
- * below it, if the bar is at the top), at least as wide as the button, and not
- * covering the bar so that the button stays clickable. Without -P/-x/-y/-z (a
- * stock dmenu) it is a plain full-width list at the screen edge, which covers
- * the bar, but at least the launcher works.
+ * list centered horizontally at the top of the output (just below the bar if
+ * the bar is at the top), at least as wide as the button, and not covering the
+ * bar so that the button stays clickable. Without -P/-x/-y/-z (a stock dmenu)
+ * it is a plain full-width list at the screen edge, which covers the bar, but
+ * at least the launcher works.
  *
  * The caller has to free() the result.
  */
 static char *launcher_build_command(const struct launcher_params *p, unsigned features) {
     char *cmd;
     sasprintf(&cmd, "dmenu -i -l %d -fn '%s' -nb '%s'", p->lines, p->font, p->background);
-    if (p->bottom) {
-        launcher_append(&cmd, " -b");
-    }
     if (features & LAUNCHER_GEOMETRY) {
         launcher_append(&cmd, " -P -x %d -y %d -z %d", p->x, p->y, p->width);
     }
@@ -771,6 +775,7 @@ static bool probe_dmenu(const char *const *args) {
         if (fd >= 0) {
             dup2(fd, STDOUT_FILENO);
             dup2(fd, STDERR_FILENO);
+            close(fd);
         }
         execvp("dmenu", (char *const *)args);
         _exit(127);
@@ -791,17 +796,56 @@ static bool probe_dmenu(const char *const *args) {
 static const struct {
     unsigned feature;
     const char *options;
+    const char *warning; /* fully formatted, for the child's stderr write */
     const char *const *args;
 } launcher_features[] = {
     {LAUNCHER_GEOMETRY, "-P/-x/-y/-z",
+     "Your dmenu does not support -P/-x/-y/-z, so the launcher list cannot be placed at the top center. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
      (const char *const[]){"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1", "-v", NULL}},
-    {LAUNCHER_BORDER, "-bw", (const char *const[]){"dmenu", "-bw", "1", "-v", NULL}},
-    {LAUNCHER_SEPARATORS, "-L", (const char *const[]){"dmenu", "-L", "-v", NULL}},
-    {LAUNCHER_ITEM_PADDING, "-ip", (const char *const[]){"dmenu", "-ip", "1", "-v", NULL}},
-    {LAUNCHER_PROMPT_PADDING, "-pp", (const char *const[]){"dmenu", "-pp", "1", "-v", NULL}},
-    {LAUNCHER_CLICK_AWAY, "-C", (const char *const[]){"dmenu", "-C", "-v", NULL}},
-    {LAUNCHER_OPACITY, "-op", (const char *const[]){"dmenu", "-op", "99", "-v", NULL}},
+    {LAUNCHER_BORDER, "-bw",
+     "Your dmenu does not support -bw, so the launcher list has no border. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-bw", "1", "-v", NULL}},
+    {LAUNCHER_SEPARATORS, "-L",
+     "Your dmenu does not support -L, so the launcher list has no lines between entries. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-L", "-v", NULL}},
+    {LAUNCHER_ITEM_PADDING, "-ip",
+     "Your dmenu does not support -ip, so the launcher list entries have no extra padding. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-ip", "1", "-v", NULL}},
+    {LAUNCHER_PROMPT_PADDING, "-pp",
+     "Your dmenu does not support -pp, so the launcher list input has no extra padding. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-pp", "1", "-v", NULL}},
+    {LAUNCHER_CLICK_AWAY, "-C",
+     "Your dmenu does not support -C, so clicking outside the launcher list will not close it. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-C", "-v", NULL}},
+    {LAUNCHER_OPACITY, "-op",
+     "Your dmenu does not support -op, so launcher_opacity has no effect. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+     (const char *const[]){"dmenu", "-op", "99", "-v", NULL}},
 };
+
+/* Async-signal-safe stderr write for the forked launcher child. ELOG() is not
+ * safe after fork() (it may use buffered stdio and the logging shared memory),
+ * so the child only emits fully preformatted static strings with write(2). */
+static void child_write_stderr(const char *msg) {
+    size_t len = strlen(msg);
+    size_t written = 0;
+    while (written < len) {
+        ssize_t n = write(STDERR_FILENO, msg + written, len - written);
+        if (n < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            return;
+        }
+        written += (size_t)n;
+    }
+}
 
 /* Returns those of the 'wanted' features that the dmenu in $PATH supports. Only
  * wanted features are probed. Only called in the launcher's own child process. */
@@ -825,20 +869,24 @@ static unsigned launcher_supported_features(unsigned wanted) {
  * dmenu.
  *
  */
-static void toggle_launcher(void) {
+static void toggle_launcher(i3_output *output) {
     if (launcher_pid > 0) {
         DLOG("Closing launcher (pid %d)\n", (int)launcher_pid);
         if (kill(-launcher_pid, SIGTERM) == -1 && errno != ESRCH) {
             ELOG("Could not close launcher (pid %d): %s\n", (int)launcher_pid, strerror(errno));
         }
-        /* launcher_pid is reset by launcher_exited_cb once it is gone. */
+        /* Stop watching the child and forget its pid immediately, so a fast
+         * third click cannot send SIGTERM to a stale (or reused) pid before
+         * launcher_exited_cb has had a chance to run. */
+        ev_child_stop(main_loop, &launcher_watcher);
+        launcher_pid = -1;
         return;
     }
 
     /* Everything that needs fonts or the X connection is done here, in the
      * i3bar process: the child must not use our connection. */
     struct launcher_params params;
-    launcher_params_init(&params);
+    launcher_params_init(&params, output);
 
     const pid_t pid = fork();
     if (pid == -1) {
@@ -866,17 +914,14 @@ static void toggle_launcher(void) {
         const unsigned supported = launcher_supported_features(wanted);
         for (size_t i = 0; i < sizeof(launcher_features) / sizeof(launcher_features[0]); i++) {
             if ((wanted & ~supported) & launcher_features[i].feature) {
-                ELOG("Your dmenu does not support %s, so the launcher list is limited. "
-                     "Install a dmenu with this option "
-                     "(github.com/kafudz/dmenu, branch feature/geometry).\n",
-                     launcher_features[i].options);
+                child_write_stderr(launcher_features[i].warning);
             }
         }
 
         char *command = launcher_build_command(&params, supported);
         DLOG("Starting launcher with dmenu command: %s\n", command);
         execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", command, (char *)NULL);
-        ELOG("Could not execute i3-dmenu-desktop: %s\n", strerror(errno));
+        child_write_stderr("Could not execute i3-dmenu-desktop\n");
         _exit(EXIT_FAILURE);
     }
 
@@ -949,7 +994,7 @@ static void handle_button(xcb_button_press_event_t *event) {
 
     if (config.launcher && x < launcher_button_width()) {
         if (!event_is_release && event->detail == 1) {
-            toggle_launcher();
+            toggle_launcher(walk);
         }
         return;
     }

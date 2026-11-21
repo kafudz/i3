@@ -82,6 +82,30 @@ struct statusline_head statusline_buffer = TAILQ_HEAD_INITIALIZER(statusline_buf
 int child_stdin;
 
 /*
+ * Free the resources owned by the fields of a single status block. The block
+ * struct itself is not freed; its fields are reset, so that a second call is a
+ * no-op.
+ */
+static void free_block_resources(struct status_block *block) {
+    I3STRING_FREE(block->full_text);
+    I3STRING_FREE(block->short_text);
+    FREE(block->color);
+    FREE(block->name);
+    FREE(block->instance);
+    FREE(block->min_width_str);
+    FREE(block->background);
+    FREE(block->border);
+    block->full_text = NULL;
+    block->short_text = NULL;
+    block->color = NULL;
+    block->name = NULL;
+    block->instance = NULL;
+    block->min_width_str = NULL;
+    block->background = NULL;
+    block->border = NULL;
+}
+
+/*
  * Remove all blocks from the given statusline.
  * If free_resources is set, the fields of each status block will be free'd.
  */
@@ -90,14 +114,7 @@ void clear_statusline(struct statusline_head *head, bool free_resources) {
     while (!TAILQ_EMPTY(head)) {
         first = TAILQ_FIRST(head);
         if (free_resources) {
-            I3STRING_FREE(first->full_text);
-            I3STRING_FREE(first->short_text);
-            FREE(first->color);
-            FREE(first->name);
-            FREE(first->instance);
-            FREE(first->min_width_str);
-            FREE(first->background);
-            FREE(first->border);
+            free_block_resources(first);
         }
 
         TAILQ_REMOVE(head, first, blocks);
@@ -198,6 +215,9 @@ static int stdin_start_array(void *context) {
  */
 static int stdin_start_map(void *context) {
     parser_ctx *ctx = context;
+    /* A previous map may have been left unfinished (e.g. by a parse error);
+     * free its resources before reusing the context. */
+    free_block_resources(&(ctx->block));
     memset(&(ctx->block), '\0', sizeof(struct status_block));
 
     /* Default width of the separator block. */
@@ -219,6 +239,9 @@ static int stdin_start_map(void *context) {
 static int stdin_map_key(void *context, const unsigned char *key, size_t len) {
     parser_ctx *ctx = context;
     FREE(ctx->last_map_key);
+    /* Allocate a fresh key for the value that follows (stdin_string()
+     * frees the previous value of the same key, so duplicate keys do not
+     * leak). */
     sasprintf(&(ctx->last_map_key), "%.*s", (int)len, key);
     return 1;
 }
@@ -376,6 +399,18 @@ static int stdin_end_map(void *context) {
     }
 
     TAILQ_INSERT_TAIL(&statusline_buffer, new_block, blocks);
+    /* The parser context still owns the strings that were shallow-copied into
+     * new_block. Reset only the pointers (not defaults such as
+     * sep_block_width and the border flags) so the next stdin_start_map()
+     * can safely free/replace them without a double free. */
+    ctx->block.full_text = NULL;
+    ctx->block.short_text = NULL;
+    ctx->block.color = NULL;
+    ctx->block.background = NULL;
+    ctx->block.border = NULL;
+    ctx->block.min_width_str = NULL;
+    ctx->block.name = NULL;
+    ctx->block.instance = NULL;
 
     return 1;
 }
@@ -811,6 +846,12 @@ void start_child(char *command) {
         yajl_gen_free(gen);
         gen = NULL;
     }
+    /* Start over with a pristine parser context: the previous status command
+     * may have been interrupted in the middle of a statusline. */
+    FREE(parser_context.last_map_key);
+    free_block_resources(&parser_context.block);
+    parser_context.has_urgent = false;
+    clear_statusline(&statusline_buffer, true);
     parser = yajl_alloc(&callbacks, NULL, &parser_context);
     gen = yajl_gen_alloc(NULL);
 

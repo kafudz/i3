@@ -808,7 +808,10 @@ static parse_file_result_t parse_file_inner(struct parser_ctx *ctx, const char *
          * the same variable more than once, thus causing buffer overflow or
          * allocation failure) with spaces (variable names cannot contain spaces) */
         const size_t key_len = strlen(nearest->key);
-        extra_bytes += (strlen(nearest->value) - key_len);
+        const size_t value_len = strlen(nearest->value);
+        /* Cast each length separately: subtracting two size_t values first
+         * would wrap when the value is shorter than the key. */
+        extra_bytes += (int)value_len - (int)key_len;
         char *end = match + key_len;
         while (match < end) {
             *match++ = ' ';
