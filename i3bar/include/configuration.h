@@ -68,6 +68,7 @@ typedef struct config_t {
     int launcher_padding;
     int launcher_prompt_padding;
     bool launcher_click_away;
+    bool launcher_dynamic_resize;
     int ws_min_width;
     bool strip_ws_numbers;
     bool strip_ws_name;

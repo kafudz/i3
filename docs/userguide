@@ -1974,6 +1974,7 @@ launcher_opacity <percent>
 launcher_padding <number> [px]
 launcher_prompt_padding <number> [px]
 launcher_click_away yes|no
+launcher_dynamic_resize yes|no
 -----------------------------------
 
 +launcher_background+ sets the background color of the list as +#rrggbb+ (default
@@ -1985,6 +1986,11 @@ field at the top (default 8), and +launcher_click_away+ (default yes) closes the
 when you click anywhere outside of it, e.g. on the desktop; for that the list
 grabs the mouse while it is open, so the click does not reach the window under
 it. These need a dmenu with +-ip+, +-pp+ and +-C+ respectively.
+
++launcher_dynamic_resize+ (default yes) makes the list grow and shrink as you
+type to show only as many entries as currently match, up to +launcher_lines+.
+It needs a dmenu with +-R+. With +no+ or an older dmenu the list keeps the
+fixed height given by +launcher_lines+.
 
 The opacity of the whole list (+launcher_opacity+, 1 to 100, default 100) is
 applied by the compositing manager, e.g. picom, and needs a dmenu with +-op+.
@@ -2004,6 +2010,7 @@ bar {
     launcher_padding 10 px
     launcher_prompt_padding 10 px
     launcher_click_away yes
+    launcher_dynamic_resize yes
 }
 -----------------------------------
 

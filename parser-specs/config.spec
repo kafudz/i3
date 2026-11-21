@@ -566,6 +566,7 @@ state BAR:
   'launcher_padding'       -> BAR_LAUNCHER_PADDING
   'launcher_prompt_padding' -> BAR_LAUNCHER_PROMPT_PADDING
   'launcher_click_away'    -> BAR_LAUNCHER_CLICK_AWAY
+  'launcher_dynamic_resize' -> BAR_LAUNCHER_DYNAMIC_RESIZE
   'workspace_buttons'      -> BAR_WORKSPACE_BUTTONS
   'workspace_min_width'    -> BAR_WORKSPACE_MIN_WIDTH
   'strip_workspace_numbers' -> BAR_STRIP_WORKSPACE_NUMBERS
@@ -741,6 +742,10 @@ state BAR_LAUNCHER_OPACITY:
 state BAR_LAUNCHER_SEPARATORS:
   value = word
       -> call cfg_bar_launcher_separators($value); BAR
+
+state BAR_LAUNCHER_DYNAMIC_RESIZE:
+  value = word
+      -> call cfg_bar_launcher_dynamic_resize($value); BAR
 
 state BAR_WORKSPACE_BUTTONS:
   value = word

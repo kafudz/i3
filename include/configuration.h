@@ -382,6 +382,11 @@ struct Barconfig {
     /** Extra height in pixels of the launcher's input field (default: 8).
      * Configuration option is 'launcher_prompt_padding'. */
     int launcher_prompt_padding;
+
+    /** Resize the launcher's list while filtering applications (default: yes).
+     * Configuration option is 'launcher_dynamic_resize'. Needs a dmenu with -R. */
+    bool launcher_dynamic_resize;
+
     bool launcher_click_away;
 
     /** Hide workspace buttons? Configuration option is 'workspace_buttons no'

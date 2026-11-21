@@ -889,6 +889,9 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_click_away");
     y(bool, config->launcher_click_away);
 
+    ystr("launcher_dynamic_resize");
+    y(bool, config->launcher_dynamic_resize);
+
     ystr("workspace_buttons");
     y(bool, !config->hide_workspace_buttons);
 

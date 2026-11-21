@@ -621,6 +621,7 @@ struct launcher_params {
     int opacity;        /* percent, 100 is opaque */
     bool separators;
     bool click_away;
+    bool dynamic_resize;
 };
 
 /* The options of dmenu that we may use. Stock dmenu has none of them; each one
@@ -634,6 +635,7 @@ enum {
     LAUNCHER_PROMPT_PADDING = 1 << 4, /* -pp */
     LAUNCHER_CLICK_AWAY = 1 << 5,     /* -C */
     LAUNCHER_OPACITY = 1 << 6,        /* -op */
+    LAUNCHER_DYNAMIC_RESIZE = 1 << 7, /* -R: resize the list while filtering */
 };
 
 /* Computes the parameters from the configuration. Must be called in the
@@ -679,6 +681,7 @@ static void launcher_params_init(struct launcher_params *p, i3_output *output) {
     p->opacity = launcher_opacity();
     p->separators = config.launcher_separators;
     p->click_away = config.launcher_click_away;
+    p->dynamic_resize = config.launcher_dynamic_resize;
 }
 
 /* The options of dmenu (LAUNCHER_*) that the configuration asks for. */
@@ -701,6 +704,9 @@ static unsigned launcher_wanted_features(const struct launcher_params *p) {
     }
     if (p->opacity < 100) {
         wanted |= LAUNCHER_OPACITY;
+    }
+    if (p->dynamic_resize) {
+        wanted |= LAUNCHER_DYNAMIC_RESIZE;
     }
     return wanted;
 }
@@ -754,6 +760,9 @@ static char *launcher_build_command(const struct launcher_params *p, unsigned fe
     }
     if (features & LAUNCHER_OPACITY) {
         launcher_append(&cmd, " -op %d", p->opacity);
+    }
+    if (features & LAUNCHER_DYNAMIC_RESIZE) {
+        launcher_append(&cmd, " -R");
     }
     return cmd;
 }
@@ -827,6 +836,10 @@ static const struct {
      "Your dmenu does not support -op, so launcher_opacity has no effect. "
      "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
      (const char *const[]){"dmenu", "-op", "99", "-v", NULL}},
+    {LAUNCHER_DYNAMIC_RESIZE, "-R",
+     "Your dmenu does not support -R, so the launcher list will not resize while you type. "
+     "Install a dmenu with this option (github.com/kafudz/dmenu).\n",
+     (const char *const[]){"dmenu", "-R", "-v", NULL}},
 };
 
 /* Async-signal-safe stderr write for the forked launcher child. ELOG() is not

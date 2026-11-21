@@ -977,6 +977,10 @@ CFGFUN(bar_launcher_separators, const char *value) {
     current_bar->launcher_separators = boolstr(value);
 }
 
+CFGFUN(bar_launcher_dynamic_resize, const char *value) {
+    current_bar->launcher_dynamic_resize = boolstr(value);
+}
+
 CFGFUN(bar_workspace_buttons, const char *value) {
     current_bar->hide_workspace_buttons = !boolstr(value);
 }
@@ -1005,6 +1009,7 @@ CFGFUN(bar_start) {
     current_bar->launcher_prompt_padding = 8;
     current_bar->launcher_click_away = true;
     current_bar->launcher_separators = true;
+    current_bar->launcher_dynamic_resize = true;
 }
 
 CFGFUN(bar_finish) {

@@ -327,6 +327,12 @@ static int config_boolean_cb(void *params_, int val) {
         return 1;
     }
 
+    if (!strcmp(cur_key, "launcher_dynamic_resize")) {
+        DLOG("launcher_dynamic_resize = %d\n", val);
+        config.launcher_dynamic_resize = val;
+        return 1;
+    }
+
     if (!strcmp(cur_key, "workspace_buttons")) {
         DLOG("workspace_buttons = %d\n", val);
         config.disable_ws = !val;
