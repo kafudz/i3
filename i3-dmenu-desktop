@@ -7,15 +7,12 @@
 
 use strict;
 use warnings qw(FATAL utf8);
-use Data::Dumper;
 use IPC::Open2;
 use POSIX qw(locale_h);
 use File::Find;
 use File::Basename qw(basename);
-use File::Temp qw(tempfile);
 use List::Util 'first';
 use Getopt::Long;
-use Pod::Usage;
 use v5.10;
 use utf8;
 use open ':encoding(UTF-8)';
@@ -23,29 +20,8 @@ use open ':encoding(UTF-8)';
 binmode STDOUT, ':utf8';
 binmode STDERR, ':utf8';
 
-# reads in a whole file
-sub slurp {
-    my ($filename) = @_;
-    my $fh;
-    if (!open($fh, '<', $filename)) {
-        warn "Could not open $filename: $!";
-        return undef;
-    }
-    local $/;
-    my $result;
-    eval {
-        $result = <$fh>;
-    };
-    if ($@) {
-        warn "Could not read $filename: $@";
-        return undef;
-    } else {
-        return $result;
-    }
-}
-
 my @entry_types;
-my $dmenu_cmd = 'dmenu -i';
+my $dmenu_cmd = q|dmenu -i -fn 'JetBrainsMono Nerd Font:size=12'|;
 my $show_duplicates;
 my $result = GetOptions(
     'dmenu=s' => \$dmenu_cmd,
@@ -56,7 +32,9 @@ my $result = GetOptions(
         exit 0;
     },
     'help' => sub {
-        pod2usage(-exitval => 0);
+        # Only needed here: loading it for every run would slow down the start.
+        require Pod::Usage;
+        Pod::Usage::pod2usage(-exitval => 0);
     });
 
 die "Could not parse command line options" unless $result;
@@ -79,7 +57,7 @@ my $valid_types = {
 # should be looked up works, refer to “Localized values for keys” of the
 # “Desktop Entry Specification”:
 # https://standards.freedesktop.org/desktop-entry-spec/latest/ar01s04.html
-my $lc_messages = setlocale(LC_MESSAGES);
+my $lc_messages = setlocale(LC_MESSAGES) // 'C';
 
 # Ignore the encoding (e.g. .UTF-8)
 $lc_messages =~ s/\.[^@]+//g;
@@ -143,7 +121,8 @@ find(
             # $File::Find::topdir but it is not supported when using the
             # 'follow' or 'follow_fast' options.
             # See #3973, #4031.
-            my $topdir = first { substr($relative, 0, length($_)) eq $_ } @searchdirs;
+            my $topdir = first { substr($relative, 0, length($_) + 1) eq "$_/" } @searchdirs;
+            return unless defined($topdir);
 
             # + 1 for the trailing /, which is missing in $topdir.
             substr($relative, 0, length($topdir) + 1) = '';
@@ -164,8 +143,21 @@ find(
 
 my %apps;
 
-for my $file (values %desktops) {
+# Only these keys are of interest. Most lines of a .desktop file (Comment[xx],
+# Keywords, Icon, …) are not, so they are skipped after looking at the first
+# character, which makes reading the files noticeably faster.
+my $interesting_first_char = qr/^[NETPHS]/;
+
+# Sort the files so that the result (in particular the numbering of entries
+# with the same name below) does not depend on the order of the hash.
+for my $relative (sort keys %desktops) {
+    my $file = $desktops{$relative};
     my $base = basename($file);
+
+    # Different relative paths (e.g. “kde/foo.desktop” and “foo.desktop”) can
+    # have the same basename. The first one wins, instead of mixing the values
+    # of both files.
+    next if exists($apps{$base});
 
     # _ is an invalid character for a key, so we can use it for our own keys.
     $apps{$base}->{_Location} = $file;
@@ -173,43 +165,64 @@ for my $file (values %desktops) {
     # Extract all “Name” and “Exec” keys from the [Desktop Entry] group
     # and store them in $apps{$base}.
     my %names;
-    my $content = slurp($file);
-    next unless defined($content);
-    my @lines = split("\n", $content);
-    for my $line (@lines) {
-        my $first = substr($line, 0, 1);
-        next if $line eq '' || $first eq '#';
-        next unless ($line eq '[Desktop Entry]' ..
-                     ($first eq '[' &&
-                      substr($line, -1) eq ']' &&
-                      $line ne '[Desktop Entry]'));
-        next if $first eq '[';
+    my $fh;
+    if (!open($fh, '<', $file)) {
+        warn "Could not open $file: $!";
+        next;
+    }
+    my $in_entry = 0;
+    my $ok = eval {
+        while (defined(my $line = <$fh>)) {
+            $line =~ s/\r?\n\z//;
+            my $first = substr($line, 0, 1);
+            next if $line eq '' || $first eq '#';
 
-        my ($key, $value) = ($line =~ /^
-          (
-            [A-Za-z0-9-]+  # the spec specifies these as valid key characters
-            (?:\[[^]]+\])? # possibly, there as a locale suffix
-          )
-          \s* = \s*        # whitespace around = should be ignored
-          (.*)             # no restrictions on the values
-          $/x);
+            if ($first eq '[') {
+                # A group header. We are only interested in [Desktop Entry],
+                # which is required to be the first group, so once we leave it
+                # the rest of the file (e.g. the [Desktop Action …] groups) can
+                # be ignored.
+                last if $in_entry;
+                $in_entry = ($line eq '[Desktop Entry]');
+                next;
+            }
+            next unless $in_entry && $first =~ $interesting_first_char;
 
-        if ($key =~ /^Name/) {
-            $names{$key} = $value;
-        } elsif ($key eq 'Exec' ||
-                 $key eq 'TryExec' ||
-                 $key eq 'Path' ||
-                 $key eq 'Type') {
-            $apps{$base}->{$key} = $value;
-        } elsif ($key eq 'NoDisplay' ||
-                 $key eq 'Hidden' ||
-                 $key eq 'StartupNotify' ||
-                 $key eq 'Terminal') {
-            # Values of type boolean must either be string true or false,
-            # see “Possible value types”:
-            # https://standards.freedesktop.org/desktop-entry-spec/latest/ar01s03.html
-            $apps{$base}->{$key} = ($value eq 'true');
+            my ($key, $value) = ($line =~ /^
+              (
+                [A-Za-z0-9-]+  # the spec specifies these as valid key characters
+                (?:\[[^]]+\])? # possibly, there as a locale suffix
+              )
+              \s* = \s*        # whitespace around = should be ignored
+              (.*)             # no restrictions on the values
+              $/x);
+            next unless defined($key);
+
+            if ($key =~ /^Name/) {
+                $names{$key} = $value;
+            } elsif ($key eq 'Exec' ||
+                     $key eq 'TryExec' ||
+                     $key eq 'Path' ||
+                     $key eq 'Type') {
+                $apps{$base}->{$key} = $value;
+            } elsif ($key eq 'NoDisplay' ||
+                     $key eq 'Hidden' ||
+                     $key eq 'StartupNotify' ||
+                     $key eq 'Terminal') {
+                # Values of type boolean must either be string true or false,
+                # see “Possible value types”:
+                # https://standards.freedesktop.org/desktop-entry-spec/latest/ar01s03.html
+                $apps{$base}->{$key} = ($value eq 'true');
+            }
         }
+        1;
+    };
+    close($fh);
+    if (!$ok) {
+        # E.g. the file is not valid UTF-8. Do not offer a half-read entry.
+        warn "Could not read $file: $@";
+        delete $apps{$base};
+        next;
     }
 
     for my $suffix (@suffixes) {
@@ -243,7 +256,47 @@ for my $file (values %desktops) {
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
 my %choices;
-for my $app (keys %apps) {
+# The lowercased names of everything in %choices, to find out whether e.g.
+# “geany” is already present when “Geany” is. Keeping it up to date is much
+# cheaper than lowercasing all keys of %choices for every single application.
+my %choices_lc;
+
+sub add_choice {
+    my ($name, $app) = @_;
+    $choices{$name} = $app;
+    $choices_lc{lc($name)} = 1;
+}
+
+my %want_type = map { $_ => 1 } @entry_types;
+my @path_dirs = split(':', $ENV{PATH} // '');
+my %tryexec_cache;
+
+# Whether the executable of a TryExec key exists. Many applications share the
+# same TryExec, so the result is remembered.
+sub tryexec_exists {
+    my ($tryexec) = @_;
+    return $tryexec_cache{$tryexec} //= do {
+        if (substr($tryexec, 0, 1) eq '/') {
+            # Skip if absolute path is not executable.
+            (-x $tryexec) ? 1 : 0;
+        } else {
+            # Search in $PATH for the executable.
+            (grep { -x "$_/$tryexec" } @path_dirs) ? 1 : 0;
+        }
+    };
+}
+
+# Escape sequences of values of type string (see the “Desktop Entry
+# Specification”), used for the Exec key below.
+my %escapes = (
+    '\\s' => ' ',
+    '\\n' => '\n',
+    '\\t' => '\t',
+    '\\r' => '\r',
+    '\\\\' => '\\',
+);
+
+for my $app (sort keys %apps) {
     my $name = $apps{$app}->{Name};
 
     # Don’t try to use .desktop files which don’t have Type=application
@@ -264,23 +317,12 @@ for my $app (keys %apps) {
             (exists($apps{$app}->{Hidden}) && $apps{$app}->{Hidden});
 
     if (exists($apps{$app}->{TryExec})) {
-        my $tryexec = $apps{$app}->{TryExec};
-        if (substr($tryexec, 0, 1) eq '/') {
-            # Skip if absolute path is not executable.
-            next unless -x $tryexec;
-        } else {
-            # Search in $PATH for the executable.
-            my $found = 0;
-            for my $path (split(':', $ENV{PATH})) {
-                next unless -x "$path/$tryexec";
-                $found = 1;
-                last;
-            }
-            next unless $found;
-        }
+        next unless tryexec_exists($apps{$app}->{TryExec});
     }
 
-    if ((scalar grep { $_ eq 'name' } @entry_types) > 0) {
+    # The “Name” key is required, but do not rely on it: an application without
+    # one is still available by its command or file name.
+    if ($want_type{name} && defined($name) && $name ne '') {
         if (exists($choices{$name})) {
             # There are two .desktop files which contain the same “Name” value.
             # I’m not sure if that is allowed to happen, but we disambiguate the
@@ -293,22 +335,15 @@ for my $app (keys %apps) {
             $name = "$name ($inc)";
         }
 
-        $choices{$name} = $app;
+        add_choice($name, $app);
         next unless $show_duplicates;
     }
 
-    if ((scalar grep { $_ eq 'command' } @entry_types) > 0) {
+    if ($want_type{command}) {
         my $command = $apps{$app}->{Exec};
 
         # Handle escape sequences (should be done for all string values, but does
         # matter here).
-        my %escapes = (
-            '\\s' => ' ',
-            '\\n' => '\n',
-            '\\t' => '\t',
-            '\\r' => '\r',
-            '\\\\' => '\\',
-        );
         $command =~ s/(\\[sntr\\])/$escapes{$1}/go;
 
         # Extract executable
@@ -325,21 +360,19 @@ for my $app (keys %apps) {
         }
 
         # Don’t add “geany” if “Geany” is already present.
-        my @keys = map { lc } keys %choices;
-        if (!(scalar grep { $_ eq lc(basename($command)) } @keys) > 0) {
-            $choices{basename($command)} = $app;
+        if (defined($command) && !exists($choices_lc{lc(basename($command))})) {
+            add_choice(basename($command), $app);
         }
         next unless $show_duplicates;
     }
 
-    if ((scalar grep { $_ eq 'filename' } @entry_types) > 0) {
+    if ($want_type{filename}) {
         my $filename = basename($app, '.desktop');
 
         # Don’t add “geany” if “Geany” is already present.
-        my @keys = map { lc } keys %choices;
-        next if (scalar grep { $_ eq lc($filename) } @keys) > 0;
+        next if exists($choices_lc{lc($filename)});
 
-        $choices{$filename} = $app;
+        add_choice($filename, $app);
     }
 }
 
@@ -376,15 +409,31 @@ close($dmenu_in);
 
 $SIG{PIPE} = 'DEFAULT';
 
+# Read the choice before waiting: dmenu only writes it when it exits.
+my $choice = <$dmenu_out>;
+close($dmenu_out);
+
 waitpid($pid, 0);
-my $status = ($? >> 8);
+my $wait_status = $?;
+
+# If dmenu was killed by a signal (e.g. it crashed, or the program that started
+# us closed it), the exit code is 0 and the output is empty, which would look
+# like the user entered an empty command. Never start anything in that case.
+if ($wait_status & 127) {
+    my $signal = $wait_status & 127;
+    say STDERR "dmenu was terminated by signal $signal, not starting anything.";
+    exit 128 + $signal;
+}
 
 # Pass on dmenu’s exit status if there was an error.
+my $status = ($wait_status >> 8);
 exit $status unless $status == 0;
 
-my $choice = <$dmenu_out>;
+# Nothing was chosen or entered: there is nothing to start.
+exit 0 unless defined($choice);
 # dmenu ≥ 4.4 adds a newline after the choice
 chomp($choice);
+exit 0 if $choice eq '';
 my $app;
 # Exact match: the user chose “Avidemux (GTK+)”
 if (exists($choices{$choice})) {
@@ -415,7 +464,7 @@ if (exists($choices{$choice})) {
 # ┃ Make i3 start the chosen application.                                     ┃
 # ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 
-my $name = $app->{Name};
+my $name = $app->{Name} // '';
 my $exec = $app->{Exec};
 my $location = $app->{_Location};
 
@@ -443,32 +492,31 @@ $name = quote($name);
 # unambiguously represented with ("\\$").
 $exec =~ s/\\\\/\\/g;
 
-# Remove deprecated field codes, as the spec dictates.
-$exec =~ s/%[dDnNvm]//g;
-
-# Replace filename field codes with the rest of the command line.
-# Note that we assume the user uses precisely one file name,
-# not multiple file names.
-$exec =~ s/%[fF]/$choice/g;
-
-# If the program works with URLs,
-# we assume the user provided a URL instead of a filename.
-# As per the spec, there must be at most one of %f, %u, %F or %U present.
-$exec =~ s/%[uU]/$choice/g;
-
-# The translated name of the application.
-$exec =~ s/%c/$name/g;
-
-# XXX: Icons are not implemented. Is the complexity (looking up the path if
-# only a name is given) actually worth it?
-#$exec =~ s/%i/--icon $icon/g;
-$exec =~ s/%i//g;
-
-# location of .desktop file
-$exec =~ s/%k/$location/g;
-
-# Literal % characters are represented as %%.
-$exec =~ s/%%/%/g;
+# Replace the field codes in a single pass, so that a literal “%%” followed by
+# a letter (e.g. “%%f”) is not mistaken for a field code:
+#
+# - %d, %D, %n, %N, %v and %m are deprecated and removed, as the spec dictates.
+# - %f and %F are replaced with the rest of the command line. Note that we
+#   assume the user uses precisely one file name, not multiple file names.
+# - %u and %U: if the program works with URLs, we assume the user provided a URL
+#   instead of a filename. As per the spec, there must be at most one of %f,
+#   %u, %F or %U present.
+# - %c is the translated name of the application.
+# - %i is the icon. XXX: Icons are not implemented. Is the complexity (looking
+#   up the path if only a name is given) actually worth it?
+# - %k is the location of the .desktop file.
+# - Literal % characters are represented as %%.
+#
+# Unknown field codes are left alone.
+my %field_codes = (
+    'd' => '', 'D' => '', 'n' => '', 'N' => '', 'v' => '', 'm' => '',
+    'f' => $choice, 'F' => $choice, 'u' => $choice, 'U' => $choice,
+    'c' => $name,
+    'i' => '',
+    'k' => $location,
+    '%' => '%',
+);
+$exec =~ s/%(.)/exists($field_codes{$1}) ? $field_codes{$1} : "%$1"/gse;
 
 if (exists($app->{Path}) && $app->{Path} ne '') {
     $exec = 'cd ' . quote($app->{Path}) . ' && ' . $exec;
@@ -476,13 +524,15 @@ if (exists($app->{Path}) && $app->{Path} ne '') {
 
 my $nosn = '';
 my $cmd;
+my $terminal_script;
 if (exists($app->{Terminal}) && $app->{Terminal}) {
     # For applications which specify “Terminal=true” (e.g. htop.desktop),
     # we need to create a temporary script that contains the full command line
     # as the syntax for starting commands with arguments varies from terminal
     # emulator to terminal emulator.
     # Then, we launch that script with i3-sensible-terminal.
-    my ($fh, $filename) = tempfile();
+    require File::Temp;
+    my ($fh, $filename) = File::Temp::tempfile();
     binmode($fh, ':utf8');
     say $fh <<EOT;
 #!/bin/sh
@@ -491,6 +541,7 @@ exec $exec
 EOT
     close($fh);
     chmod 0755, $filename;
+    $terminal_script = $filename;
 
     $cmd = qq|exec i3-sensible-terminal -e "$filename"|;
 } else {
@@ -510,7 +561,12 @@ EOT
     $cmd = qq|exec $nosn "$exec"|;
 }
 
-system('i3-msg', $cmd) == 0 or die "Could not launch i3-msg: $?";
+if (system('i3-msg', $cmd) != 0) {
+    my $error = $?;
+    # The script of a Terminal=true application removes itself once it runs.
+    unlink($terminal_script) if defined($terminal_script);
+    die "Could not launch i3-msg: $error";
+}
 
 =encoding utf-8
 
@@ -520,7 +576,7 @@ system('i3-msg', $cmd) == 0 or die "Could not launch i3-msg: $?";
 
 =head1 SYNOPSIS
 
-    i3-dmenu-desktop [--dmenu='dmenu -i'] [--entry-type=name] [--show-duplicates]
+    i3-dmenu-desktop [--dmenu='dmenu -i -fn "JetBrainsMono Nerd Font:size=12"'] [--entry-type=name] [--show-duplicates]
 
 =head1 DESCRIPTION
 
@@ -553,6 +609,8 @@ want to launch "GNU Emacs 24" with the patch /tmp/foobar.txt, you would type
 
 .desktop files with NoDisplay=true or Hidden=true are skipped.
 
+If dmenu is terminated by a signal, or nothing is entered, nothing is started.
+
 UTF-8 is supported, of course, but dmenu does not support displaying all
 glyphs. E.g., xfce4-terminal.desktop's Name[fi]=Pääte will be displayed just
 fine, but not its Name[ru]=Терминал.
@@ -563,9 +621,11 @@ fine, but not its Name[ru]=Терминал.
 
 =item B<--dmenu=command>
 
-Execute command instead of 'dmenu -i'. This option can be used to pass custom
-parameters to dmenu, or to make i3-dmenu-desktop start a custom (patched?)
-version of dmenu.
+Execute command instead of the default, which is 'dmenu -i' with the font
+"JetBrainsMono Nerd Font" at size 12 (if that font is not installed, fontconfig
+substitutes another one). This option can be used to pass custom parameters to
+dmenu, such as a different font, or to make i3-dmenu-desktop start a custom
+(patched?) version of dmenu.
 
 =item B<--entry-type=type>
 
