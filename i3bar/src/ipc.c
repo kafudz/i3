@@ -243,12 +243,12 @@ static void got_bar_config_update(const unsigned char *event, size_t size) {
     if (!status_child_is_alive() || strings_differ(old_command, config.command)) {
         kill_child();
         clear_statusline(&statusline_head, true);
-        start_child(config.command);
-    }
-    free(old_command);
         /* Drop partially parsed blocks from the buffer as well (the buffer
          * exclusively owns its blocks, see stdin_end_array()). */
         clear_statusline(&statusline_buffer, true);
+        start_child(config.command);
+    }
+    free(old_command);
 
     /* restart workspace command process */
     if (!ws_child_is_alive() || strings_differ(old_workspace_command, config.workspace_command)) {
@@ -288,13 +288,13 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
     while (rec < header_len) {
         const int n = read(fd, header + rec, header_len - rec);
         if (n == -1) {
-            ELOG("read() failed: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
             if (errno == EINTR) {
                 /* A signal interrupted the read, just try again. */
                 continue;
             }
+            ELOG("read() failed: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
         if (n == 0) {
             /* EOF received. Since i3 will restart i3bar instances as appropriate,
              * we exit here. */
@@ -332,13 +332,13 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
     while (rec < size) {
         int n = read(fd, buffer + rec, size - rec);
         if (n == -1) {
-            ELOG("read() failed: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
             if (errno == EINTR) {
                 /* A signal interrupted the read, just try again. */
                 continue;
             }
+            ELOG("read() failed: %s\n", strerror(errno));
+            exit(EXIT_FAILURE);
+        }
         if (n == 0) {
             ELOG("Nothing to read!\n");
             exit(EXIT_FAILURE);
@@ -363,11 +363,11 @@ static void got_data(struct ev_loop *loop, ev_io *watcher, int events) {
         if (type < sizeof(reply_handlers) / sizeof(reply_handlers[0]) &&
             reply_handlers[type]) {
             reply_handlers[type](buffer, size);
+        } else {
+            DLOG("Received unknown reply type %d, ignoring it\n", type);
         }
     }
 
-        } else {
-            DLOG("Received unknown reply type %d, ignoring it\n", type);
     FREE(header);
     FREE(buffer);
 }

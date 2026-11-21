@@ -836,6 +836,7 @@ static void handle_client_message(xcb_client_message_event_t *event) {
                 free(xembedr);
             } else {
                 ELOG("Window %08x violates the XEMBED protocol, _XEMBED_INFO not set\n", client);
+                free(xembedr);
             }
 
             DLOG("X window %08x requested docking\n", client);
@@ -976,6 +977,7 @@ static void handle_property_notify(xcb_property_notify_event_t *event) {
                                                                    NULL);
         if (xembedr == NULL || xembedr->length == 0) {
             DLOG("xembed_info unset\n");
+            free(xembedr);
             return;
         }
 
@@ -1258,7 +1260,6 @@ static void send_tray_clientmessage(void) {
     ev->data.data32[2] = selwin;
 
     xcb_send_event(xcb_connection,
-                free(xembedr);
                    0,
                    xcb_root,
                    0xFFFFFF,
@@ -1399,7 +1400,6 @@ void get_atoms(void) {
             xcb_connection, atom_cookies[name], NULL);                          \
         if (reply == NULL) {                                                    \
             ELOG("Could not get atom %s\n", #name);                             \
-            free(xembedr);
             exit(EXIT_FAILURE);                                                 \
         }                                                                       \
         atoms[name] = reply->atom;                                              \
