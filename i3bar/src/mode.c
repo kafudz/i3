@@ -131,6 +131,7 @@ void parse_mode_json(const unsigned char *json, size_t size) {
              * mode and carry on. */
             ELOG("Could not parse mode event!\n");
             yajl_free(handle);
+            I3STRING_FREE(binding.name);
             FREE(params.cur_key);
             FREE(params.name);
             return;

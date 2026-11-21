@@ -970,7 +970,10 @@ CFGFUN(bar_launcher_click_away, const char *value) {
 }
 
 CFGFUN(bar_launcher_opacity, const long opacity) {
-    current_bar->launcher_opacity = opacity;
+    /* Kept so that existing configurations still load: the dmenu of the
+     * launcher no longer supports opacity (-op), so there is nothing to set. */
+    (void)opacity;
+    ELOG("launcher_opacity is deprecated and has no effect anymore, please remove it from your config\n");
 }
 
 CFGFUN(bar_launcher_separators, const char *value) {
@@ -1004,7 +1007,6 @@ CFGFUN(bar_start) {
     current_bar->tray_padding = 2;
     current_bar->modifier = XCB_KEY_BUT_MASK_MOD_4;
     current_bar->launcher_border = 1;
-    current_bar->launcher_opacity = 100;
     current_bar->launcher_padding = 8;
     current_bar->launcher_prompt_padding = 8;
     current_bar->launcher_click_away = true;

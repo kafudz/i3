@@ -1952,7 +1952,7 @@ The application list is a vertical dmenu (font +monospace:size=12+) that opens
 centered horizontally at the top of the output whose launcher button was
 clicked; with a top bar it is placed just below the bar. This needs a dmenu
 which supports the +-P+, +-x+, +-y+ and +-z+ options (for example the
-dmenu from https://github.com/kafudz/dmenu, branch +feature/geometry+).
+dmenu from https://github.com/kafudz/dmenu).
 
 The font, the number of lines, the width, the border and the lines between the
 entries of the list can be changed. The defaults are +monospace:size=12+, 15
@@ -1970,7 +1970,6 @@ launcher_lines <number>
 launcher_width <number> [px]
 launcher_border <number> [px]
 launcher_separators yes|no
-launcher_opacity <percent>
 launcher_padding <number> [px]
 launcher_prompt_padding <number> [px]
 launcher_click_away yes|no
@@ -1992,9 +1991,9 @@ type to show only as many entries as currently match, up to +launcher_lines+.
 It needs a dmenu with +-R+. With +no+ or an older dmenu the list keeps the
 fixed height given by +launcher_lines+.
 
-The opacity of the whole list (+launcher_opacity+, 1 to 100, default 100) is
-applied by the compositing manager, e.g. picom, and needs a dmenu with +-op+.
-Without a compositor it has no effect.
++launcher_opacity+ is deprecated: the launcher's dmenu has no opacity support
+anymore, so the option is ignored (with a warning in the log) and only still
+accepted so that existing configurations keep loading.
 
 *Example*:
 -----------------------------------
@@ -2006,7 +2005,6 @@ bar {
     launcher_width 400 px
     launcher_border 2 px
     launcher_separators yes
-    launcher_opacity 90
     launcher_padding 10 px
     launcher_prompt_padding 10 px
     launcher_click_away yes

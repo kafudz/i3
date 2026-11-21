@@ -19,6 +19,7 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/syscall.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -600,11 +601,6 @@ static const char *launcher_default_background = "#121314";
 static const int launcher_default_lines = 15;
 static const int launcher_default_width_px = 300;
 
-/* The opacity in percent from 'launcher_opacity', or 100 if unset/invalid. */
-static int launcher_opacity(void) {
-    return (config.launcher_opacity > 0 && config.launcher_opacity < 100) ? config.launcher_opacity : 100;
-}
-
 /* Everything the dmenu command line of the launcher depends on. It is computed
  * in i3bar itself (it needs fonts, the X connection and the bar geometry), so
  * that the forked child only has to put the pieces together. */
@@ -618,7 +614,6 @@ struct launcher_params {
     int border;         /* pixels, 0 for none */
     int padding;        /* extra height of each entry in pixels */
     int prompt_padding; /* extra height of the input field in pixels */
-    int opacity;        /* percent, 100 is opaque */
     bool separators;
     bool click_away;
     bool dynamic_resize;
@@ -634,8 +629,7 @@ enum {
     LAUNCHER_ITEM_PADDING = 1 << 3,   /* -ip */
     LAUNCHER_PROMPT_PADDING = 1 << 4, /* -pp */
     LAUNCHER_CLICK_AWAY = 1 << 5,     /* -C */
-    LAUNCHER_OPACITY = 1 << 6,        /* -op */
-    LAUNCHER_DYNAMIC_RESIZE = 1 << 7, /* -R: resize the list while filtering */
+    LAUNCHER_DYNAMIC_RESIZE = 1 << 6, /* -R: resize the list while filtering */
 };
 
 /* Computes the parameters from the configuration. Must be called in the
@@ -678,7 +672,6 @@ static void launcher_params_init(struct launcher_params *p, i3_output *output) {
     p->border = logical_px(MAX(config.launcher_border, 0));
     p->padding = logical_px(MAX(config.launcher_padding, 0));
     p->prompt_padding = logical_px(MAX(config.launcher_prompt_padding, 0));
-    p->opacity = launcher_opacity();
     p->separators = config.launcher_separators;
     p->click_away = config.launcher_click_away;
     p->dynamic_resize = config.launcher_dynamic_resize;
@@ -701,9 +694,6 @@ static unsigned launcher_wanted_features(const struct launcher_params *p) {
     }
     if (p->click_away) {
         wanted |= LAUNCHER_CLICK_AWAY;
-    }
-    if (p->opacity < 100) {
-        wanted |= LAUNCHER_OPACITY;
     }
     if (p->dynamic_resize) {
         wanted |= LAUNCHER_DYNAMIC_RESIZE;
@@ -758,9 +748,6 @@ static char *launcher_build_command(const struct launcher_params *p, unsigned fe
     if (features & LAUNCHER_CLICK_AWAY) {
         launcher_append(&cmd, " -C");
     }
-    if (features & LAUNCHER_OPACITY) {
-        launcher_append(&cmd, " -op %d", p->opacity);
-    }
     if (features & LAUNCHER_DYNAMIC_RESIZE) {
         launcher_append(&cmd, " -R");
     }
@@ -799,48 +786,58 @@ static bool probe_dmenu(const char *const *args) {
     return WIFEXITED(status) && WEXITSTATUS(status) == 0;
 }
 
+/* Appended to every warning about a missing dmenu option. */
+#define LAUNCHER_DMENU_HINT "Install the dmenu from github.com/kafudz/dmenu.\n"
+
 /* How to test for each option of dmenu. The values are in the range that we
- * are going to use (e.g. -op below 100): a dmenu with a bug for those values
- * should be noticed here rather than crash when the launcher is opened. */
+ * are going to use: a dmenu with a bug for those values should be noticed here
+ * rather than crash when the launcher is opened. */
 static const struct {
     unsigned feature;
-    const char *options;
     const char *warning; /* fully formatted, for the child's stderr write */
     const char *const *args;
 } launcher_features[] = {
-    {LAUNCHER_GEOMETRY, "-P/-x/-y/-z",
-     "Your dmenu does not support -P/-x/-y/-z, so the launcher list cannot be placed at the top center. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_GEOMETRY,
+     "Your dmenu does not support -P/-x/-y/-z, so the launcher list cannot be placed at the top center. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1", "-v", NULL}},
-    {LAUNCHER_BORDER, "-bw",
-     "Your dmenu does not support -bw, so the launcher list has no border. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_BORDER,
+     "Your dmenu does not support -bw, so the launcher list has no border. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-bw", "1", "-v", NULL}},
-    {LAUNCHER_SEPARATORS, "-L",
-     "Your dmenu does not support -L, so the launcher list has no lines between entries. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_SEPARATORS,
+     "Your dmenu does not support -L, so the launcher list has no lines between entries. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-L", "-v", NULL}},
-    {LAUNCHER_ITEM_PADDING, "-ip",
-     "Your dmenu does not support -ip, so the launcher list entries have no extra padding. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_ITEM_PADDING,
+     "Your dmenu does not support -ip, so the launcher list entries have no extra padding. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-ip", "1", "-v", NULL}},
-    {LAUNCHER_PROMPT_PADDING, "-pp",
-     "Your dmenu does not support -pp, so the launcher list input has no extra padding. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_PROMPT_PADDING,
+     "Your dmenu does not support -pp, so the launcher list input has no extra padding. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-pp", "1", "-v", NULL}},
-    {LAUNCHER_CLICK_AWAY, "-C",
-     "Your dmenu does not support -C, so clicking outside the launcher list will not close it. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
+    {LAUNCHER_CLICK_AWAY,
+     "Your dmenu does not support -C, so clicking outside the launcher list will not close it. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-C", "-v", NULL}},
-    {LAUNCHER_OPACITY, "-op",
-     "Your dmenu does not support -op, so launcher_opacity has no effect. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu, branch feature/geometry).\n",
-     (const char *const[]){"dmenu", "-op", "99", "-v", NULL}},
-    {LAUNCHER_DYNAMIC_RESIZE, "-R",
-     "Your dmenu does not support -R, so the launcher list will not resize while you type. "
-     "Install a dmenu with this option (github.com/kafudz/dmenu).\n",
+    {LAUNCHER_DYNAMIC_RESIZE,
+     "Your dmenu does not support -R, so the launcher list will not resize while you type. " LAUNCHER_DMENU_HINT,
      (const char *const[]){"dmenu", "-R", "-v", NULL}},
 };
+
+/* Closes all file descriptors above stderr in the launcher's child process.
+ * The limit from sysconf() can be in the millions (e.g. under systemd), so
+ * closing one by one would delay every launcher start noticeably: prefer
+ * close_range(2), and fall back to a bounded loop where it is not available. */
+static void close_inherited_fds(void) {
+#if defined(__linux__) && defined(SYS_close_range)
+    if (syscall(SYS_close_range, 3U, ~0U, 0U) == 0) {
+        return;
+    }
+#endif
+    long max_fd = sysconf(_SC_OPEN_MAX);
+    if (max_fd < 0 || max_fd > 65536) {
+        max_fd = 65536;
+    }
+    for (int fd = 3; fd < max_fd; fd++) {
+        close(fd);
+    }
+}
 
 /* Async-signal-safe stderr write for the forked launcher child. ELOG() is not
  * safe after fork() (it may use buffered stdio and the logging shared memory),
@@ -918,10 +915,7 @@ static void toggle_launcher(i3_output *output) {
          * holds e.g. the xcb fd, our bar windows would stay alive on the X
          * server even after we exited, and the status command would not see
          * EOF on its stdin when we close it. */
-        const int max_fd = (int)sysconf(_SC_OPEN_MAX);
-        for (int close_fd = 3; close_fd < max_fd; close_fd++) {
-            close(close_fd);
-        }
+        close_inherited_fds();
 
         const unsigned wanted = launcher_wanted_features(&params);
         const unsigned supported = launcher_supported_features(wanted);

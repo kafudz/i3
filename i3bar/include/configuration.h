@@ -64,7 +64,6 @@ typedef struct config_t {
     int launcher_width;
     int launcher_border;
     bool launcher_separators;
-    int launcher_opacity;
     int launcher_padding;
     int launcher_prompt_padding;
     bool launcher_click_away;

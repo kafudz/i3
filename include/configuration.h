@@ -370,10 +370,6 @@ struct Barconfig {
     int launcher_border;
     bool launcher_separators;
 
-    /** Opacity of the launcher's list in percent (default: 100). Needs a
-     * compositing manager. Configuration option is 'launcher_opacity'. */
-    int launcher_opacity;
-
     /** Extra height in pixels of each entry of the launcher's list (default:
      * 8) and whether a click outside of the list closes it (default: yes).
      * Configuration options are 'launcher_padding' and 'launcher_click_away'. */

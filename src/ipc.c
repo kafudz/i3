@@ -877,9 +877,6 @@ static void dump_bar_config(yajl_gen gen, Barconfig *config) {
     ystr("launcher_separators");
     y(bool, config->launcher_separators);
 
-    ystr("launcher_opacity");
-    y(integer, config->launcher_opacity);
-
     ystr("launcher_padding");
     y(integer, config->launcher_padding);
 
