@@ -10,18 +10,11 @@
 #include "common.h"
 
 #include <err.h>
-#include <errno.h>
 #include <ev.h>
-#include <fcntl.h>
 #include <i3/ipc.h>
-#include <signal.h>
-#include <stdarg.h>
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/syscall.h>
-#include <sys/wait.h>
-#include <unistd.h>
 
 #include <xcb/xcb_aux.h>
 #include <xcb/xcb_cursor.h>
@@ -529,414 +522,6 @@ static int predict_button_width(int name_width) {
                logical_px(config.ws_min_width));
 }
 
-static i3String *launcher_label = NULL;
-/* Cached width of the launcher label, or -1 if it needs to be (re)computed.
- * Measuring text is expensive (it involves font shaping), but the label is
- * fixed, so its width only changes when the font changes — see
- * init_xcb_late(), which resets this cache. */
-static int launcher_label_width = -1;
-
-/* Width of the launcher button itself (0 if the launcher is disabled). */
-static int launcher_button_width(void) {
-    if (!config.launcher) {
-        return 0;
-    }
-    if (launcher_label == NULL) {
-        /* nf-linux-i3 (U+F35A) of the Nerd Fonts; needs a Nerd Font in the bar font. */
-        launcher_label = i3string_from_utf8("\xef\x8d\x9a");
-    }
-    if (launcher_label_width < 0) {
-        launcher_label_width = predict_text_width(launcher_label);
-    }
-    return predict_button_width(launcher_label_width);
-}
-
-/* Horizontal space taken by the launcher button including the gap to the
- * first workspace button (0 if the launcher is disabled). */
-static int launcher_total_width(void) {
-    const int w = launcher_button_width();
-    return w > 0 ? w + logical_px(ws_spacing_px) : 0;
-}
-
-/* The running launcher (i3-dmenu-desktop), or -1 if it is not running. */
-static pid_t launcher_pid = -1;
-static ev_child launcher_watcher;
-
-/* Called when the launcher exited, either because the user picked an entry,
- * cancelled it or because we closed it with a second click. */
-static void launcher_exited_cb(struct ev_loop *loop, ev_child *w, int revents) {
-    ev_child_stop(loop, w);
-    if (WIFEXITED(w->rstatus) && WEXITSTATUS(w->rstatus) != 0) {
-        /* Exit status 1 is normal if the user cancelled the menu. */
-        DLOG("Launcher (pid %d) exited with status %d\n", (int)w->rpid, WEXITSTATUS(w->rstatus));
-    } else {
-        DLOG("Launcher (pid %d) exited\n", (int)w->rpid);
-    }
-    launcher_pid = -1;
-}
-
-/* Kills a running launcher (its whole process group, so that the dmenu it
- * spawned dies with it) and frees the launcher button's label. Called when
- * i3bar exits or restarts: without this, a launcher started by us would stay
- * on screen forever, because it lives in its own session. */
-static void launcher_cleanup(void) {
-    if (launcher_pid > 0) {
-        DLOG("Terminating launcher (pid %d)\n", (int)launcher_pid);
-        if (kill(-launcher_pid, SIGTERM) == -1 && errno != ESRCH) {
-            ELOG("Could not close launcher (pid %d): %s\n", (int)launcher_pid, strerror(errno));
-        }
-        /* We are on an exit path (the event loop will not run again), so
-         * nothing may use the pid anymore. Resetting it also makes a second
-         * call (atexit after clean_xcb) a no-op and avoids signaling an
-         * unrelated process in case the pid gets reused. */
-        launcher_pid = -1;
-    }
-    I3STRING_FREE(launcher_label);
-    launcher_label_width = -1;
-}
-
-/* Defaults for the launcher options. */
-static const char *launcher_default_font = "monospace:size=12";
-static const char *launcher_default_background = "#121314";
-static const int launcher_default_lines = 15;
-static const int launcher_default_width_px = 300;
-
-/* Everything the dmenu command line of the launcher depends on. It is computed
- * in i3bar itself (it needs fonts, the X connection and the bar geometry), so
- * that the forked child only has to put the pieces together. */
-struct launcher_params {
-    const char *font;
-    const char *background;
-    int lines;
-    int width;          /* outer width of the list in pixels */
-    int x;              /* left edge of the list, relative to the output */
-    int y;              /* top edge of the list, relative to the output */
-    int border;         /* pixels, 0 for none */
-    int padding;        /* extra height of each entry in pixels */
-    int prompt_padding; /* extra height of the input field in pixels */
-    bool separators;
-    bool click_away;
-    bool dynamic_resize;
-};
-
-/* The options of dmenu that we may use. Stock dmenu has none of them; each one
- * is only passed if the dmenu in $PATH supports it, so that an older dmenu
- * (or a newer i3bar) never makes the launcher fail. */
-enum {
-    LAUNCHER_GEOMETRY = 1 << 0,       /* -P -x -y -z: place the list at the top center of the output */
-    LAUNCHER_BORDER = 1 << 1,         /* -bw */
-    LAUNCHER_SEPARATORS = 1 << 2,     /* -L */
-    LAUNCHER_ITEM_PADDING = 1 << 3,   /* -ip */
-    LAUNCHER_PROMPT_PADDING = 1 << 4, /* -pp */
-    LAUNCHER_CLICK_AWAY = 1 << 5,     /* -C */
-    LAUNCHER_DYNAMIC_RESIZE = 1 << 6, /* -R: resize the list while filtering */
-};
-
-/* Computes the parameters from the configuration. Must be called in the
- * i3bar process, not in the forked child. */
-static void launcher_params_init(struct launcher_params *p, i3_output *output) {
-    p->font = config.launcher_font ? config.launcher_font : launcher_default_font;
-    /* The font ends up inside single quotes in a shell command line. */
-    if (strpbrk(p->font, "'\"`$\\") != NULL) {
-        ELOG("Ignoring launcher_font \"%s\": it must not contain any of ' \" ` $ \\\n", p->font);
-        p->font = launcher_default_font;
-    }
-
-    p->background = config.launcher_background ? config.launcher_background
-                                               : launcher_default_background;
-    /* Also ends up in a shell command line, so only accept "#rrggbb". */
-    bool valid_color = (strlen(p->background) == 7 && p->background[0] == '#');
-    for (int i = 1; valid_color && i < 7; i++) {
-        valid_color = (strchr("0123456789abcdefABCDEF", p->background[i]) != NULL);
-    }
-    if (!valid_color) {
-        ELOG("Ignoring launcher_background \"%s\": it must look like #rrggbb\n", p->background);
-        p->background = launcher_default_background;
-    }
-
-    p->lines = config.launcher_lines > 0 ? config.launcher_lines : launcher_default_lines;
-    const int width = config.launcher_width > 0 ? logical_px(config.launcher_width)
-                                                : logical_px(launcher_default_width_px);
-    p->width = MAX(launcher_button_width(), width);
-
-    /* Center the list horizontally at the top of the clicked output. dmenu's
-     * -x/-y are offsets relative to the monitor selected by -P (the one under
-     * the pointer, i.e. the one whose button was clicked), so use coordinates
-     * relative to that output, not root-window coordinates. Guard against an
-     * output smaller than the list by clamping to 0, so we never pass a
-     * negative offset to dmenu. */
-    const int output_width = (output != NULL ? (int)output->rect.w : 0);
-    p->x = MAX(0, (output_width - p->width) / 2);
-    /* With a top bar, start below the bar instead of covering it. */
-    p->y = (config.position == POS_TOP ? bar_height : 0);
-    p->border = logical_px(MAX(config.launcher_border, 0));
-    p->padding = logical_px(MAX(config.launcher_padding, 0));
-    p->prompt_padding = logical_px(MAX(config.launcher_prompt_padding, 0));
-    p->separators = config.launcher_separators;
-    p->click_away = config.launcher_click_away;
-    p->dynamic_resize = config.launcher_dynamic_resize;
-}
-
-/* The options of dmenu (LAUNCHER_*) that the configuration asks for. */
-static unsigned launcher_wanted_features(const struct launcher_params *p) {
-    unsigned wanted = LAUNCHER_GEOMETRY;
-    if (p->border > 0) {
-        wanted |= LAUNCHER_BORDER;
-    }
-    if (p->separators) {
-        wanted |= LAUNCHER_SEPARATORS;
-    }
-    if (p->padding > 0) {
-        wanted |= LAUNCHER_ITEM_PADDING;
-    }
-    if (p->prompt_padding > 0) {
-        wanted |= LAUNCHER_PROMPT_PADDING;
-    }
-    if (p->click_away) {
-        wanted |= LAUNCHER_CLICK_AWAY;
-    }
-    if (p->dynamic_resize) {
-        wanted |= LAUNCHER_DYNAMIC_RESIZE;
-    }
-    return wanted;
-}
-
-static void launcher_append(char **cmd, const char *fmt, ...) {
-    va_list ap;
-    va_start(ap, fmt);
-    char *part = NULL;
-    if (vasprintf(&part, fmt, ap) == -1) {
-        err(EXIT_FAILURE, "vasprintf()");
-    }
-    va_end(ap);
-    char *joined;
-    sasprintf(&joined, "%s%s", *cmd, part);
-    free(part);
-    free(*cmd);
-    *cmd = joined;
-}
-
-/*
- * Builds the dmenu command line for i3-dmenu-desktop, using only those
- * options of dmenu that are in 'features'. With all of them it is a vertical
- * list centered horizontally at the top of the output (just below the bar if
- * the bar is at the top), at least as wide as the button, and not covering the
- * bar so that the button stays clickable. Without -P/-x/-y/-z (a stock dmenu)
- * it is a plain full-width list at the screen edge, which covers the bar, but
- * at least the launcher works.
- *
- * The caller has to free() the result.
- */
-static char *launcher_build_command(const struct launcher_params *p, unsigned features) {
-    char *cmd;
-    sasprintf(&cmd, "dmenu -i -l %d -fn '%s' -nb '%s'", p->lines, p->font, p->background);
-    if (features & LAUNCHER_GEOMETRY) {
-        launcher_append(&cmd, " -P -x %d -y %d -z %d", p->x, p->y, p->width);
-    }
-    if (features & LAUNCHER_BORDER) {
-        launcher_append(&cmd, " -bw %d", p->border);
-    }
-    if (features & LAUNCHER_SEPARATORS) {
-        launcher_append(&cmd, " -L");
-    }
-    if (features & LAUNCHER_ITEM_PADDING) {
-        launcher_append(&cmd, " -ip %d", p->padding);
-    }
-    if (features & LAUNCHER_PROMPT_PADDING) {
-        launcher_append(&cmd, " -pp %d", p->prompt_padding);
-    }
-    if (features & LAUNCHER_CLICK_AWAY) {
-        launcher_append(&cmd, " -C");
-    }
-    if (features & LAUNCHER_DYNAMIC_RESIZE) {
-        launcher_append(&cmd, " -R");
-    }
-    return cmd;
-}
-
-/*
- * Runs "dmenu <args...> -v" and returns whether it exited successfully.
- * "-v" is placed last: a dmenu which understands all of the options before it
- * prints its version and exits without touching X, while any other dmenu
- * rejects the first unknown option with its usage message.
- * Only called in the launcher's own child process.
- */
-static bool probe_dmenu(const char *const *args) {
-    const pid_t probe = fork();
-    if (probe == -1) {
-        return true; /* can't tell, assume that it works */
-    }
-    if (probe == 0) {
-        const int fd = open("/dev/null", O_RDWR);
-        if (fd >= 0) {
-            dup2(fd, STDOUT_FILENO);
-            dup2(fd, STDERR_FILENO);
-            close(fd);
-        }
-        execvp("dmenu", (char *const *)args);
-        _exit(127);
-    }
-    int status = 0;
-    while (waitpid(probe, &status, 0) == -1) {
-        if (errno != EINTR) {
-            return true; /* can't tell, assume that it works */
-        }
-        /* The wait was interrupted by a signal, try again. */
-    }
-    return WIFEXITED(status) && WEXITSTATUS(status) == 0;
-}
-
-/* Appended to every warning about a missing dmenu option. */
-#define LAUNCHER_DMENU_HINT "Install the dmenu from github.com/kafudz/dmenu.\n"
-
-/* How to test for each option of dmenu. The values are in the range that we
- * are going to use: a dmenu with a bug for those values should be noticed here
- * rather than crash when the launcher is opened. */
-static const struct {
-    unsigned feature;
-    const char *warning; /* fully formatted, for the child's stderr write */
-    const char *const *args;
-} launcher_features[] = {
-    {LAUNCHER_GEOMETRY,
-     "Your dmenu does not support -P/-x/-y/-z, so the launcher list cannot be placed at the top center. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-P", "-x", "0", "-y", "0", "-z", "1", "-v", NULL}},
-    {LAUNCHER_BORDER,
-     "Your dmenu does not support -bw, so the launcher list has no border. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-bw", "1", "-v", NULL}},
-    {LAUNCHER_SEPARATORS,
-     "Your dmenu does not support -L, so the launcher list has no lines between entries. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-L", "-v", NULL}},
-    {LAUNCHER_ITEM_PADDING,
-     "Your dmenu does not support -ip, so the launcher list entries have no extra padding. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-ip", "1", "-v", NULL}},
-    {LAUNCHER_PROMPT_PADDING,
-     "Your dmenu does not support -pp, so the launcher list input has no extra padding. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-pp", "1", "-v", NULL}},
-    {LAUNCHER_CLICK_AWAY,
-     "Your dmenu does not support -C, so clicking outside the launcher list will not close it. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-C", "-v", NULL}},
-    {LAUNCHER_DYNAMIC_RESIZE,
-     "Your dmenu does not support -R, so the launcher list will not resize while you type. " LAUNCHER_DMENU_HINT,
-     (const char *const[]){"dmenu", "-R", "-v", NULL}},
-};
-
-/* Closes all file descriptors above stderr in the launcher's child process.
- * The limit from sysconf() can be in the millions (e.g. under systemd), so
- * closing one by one would delay every launcher start noticeably: prefer
- * close_range(2), and fall back to a bounded loop where it is not available. */
-static void close_inherited_fds(void) {
-#if defined(__linux__) && defined(SYS_close_range)
-    if (syscall(SYS_close_range, 3U, ~0U, 0U) == 0) {
-        return;
-    }
-#endif
-    long max_fd = sysconf(_SC_OPEN_MAX);
-    if (max_fd < 0 || max_fd > 65536) {
-        max_fd = 65536;
-    }
-    for (int fd = 3; fd < max_fd; fd++) {
-        close(fd);
-    }
-}
-
-/* Async-signal-safe stderr write for the forked launcher child. ELOG() is not
- * safe after fork() (it may use buffered stdio and the logging shared memory),
- * so the child only emits fully preformatted static strings with write(2). */
-static void child_write_stderr(const char *msg) {
-    size_t len = strlen(msg);
-    size_t written = 0;
-    while (written < len) {
-        ssize_t n = write(STDERR_FILENO, msg + written, len - written);
-        if (n < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
-            return;
-        }
-        written += (size_t)n;
-    }
-}
-
-/* Returns those of the 'wanted' features that the dmenu in $PATH supports. Only
- * wanted features are probed. Only called in the launcher's own child process. */
-static unsigned launcher_supported_features(unsigned wanted) {
-    unsigned supported = 0;
-    for (size_t i = 0; i < sizeof(launcher_features) / sizeof(launcher_features[0]); i++) {
-        if ((wanted & launcher_features[i].feature) && probe_dmenu(launcher_features[i].args)) {
-            supported |= launcher_features[i].feature;
-        }
-    }
-    return supported;
-}
-
-/*
- * Starts i3-dmenu-desktop, or closes it again if it is already running.
- *
- * The launcher is started in its own session, so that on the second click we
- * can terminate the whole process group, which includes the dmenu that
- * i3-dmenu-desktop spawned (killing only the perl script would leave dmenu
- * behind). Only a launcher started by us is ever closed, never an unrelated
- * dmenu.
- *
- */
-static void toggle_launcher(i3_output *output) {
-    if (launcher_pid > 0) {
-        DLOG("Closing launcher (pid %d)\n", (int)launcher_pid);
-        if (kill(-launcher_pid, SIGTERM) == -1 && errno != ESRCH) {
-            ELOG("Could not close launcher (pid %d): %s\n", (int)launcher_pid, strerror(errno));
-        }
-        /* Stop watching the child and forget its pid immediately, so a fast
-         * third click cannot send SIGTERM to a stale (or reused) pid before
-         * launcher_exited_cb has had a chance to run. */
-        ev_child_stop(main_loop, &launcher_watcher);
-        launcher_pid = -1;
-        return;
-    }
-
-    /* Everything that needs fonts or the X connection is done here, in the
-     * i3bar process: the child must not use our connection. */
-    struct launcher_params params;
-    launcher_params_init(&params, output);
-
-    const pid_t pid = fork();
-    if (pid == -1) {
-        ELOG("Could not fork() to start the launcher: %s\n", strerror(errno));
-        return;
-    }
-    if (pid == 0) {
-        /* Child: own session/process group, default signal dispositions (the
-         * event loop's SIGCHLD handler must not run for our probes below). */
-        setsid();
-        signal(SIGPIPE, SIG_DFL);
-        signal(SIGCHLD, SIG_DFL);
-
-        /* Do not leak our file descriptors (the X connection, the IPC socket
-         * to i3, the pipes of the status command) into the launcher: while it
-         * holds e.g. the xcb fd, our bar windows would stay alive on the X
-         * server even after we exited, and the status command would not see
-         * EOF on its stdin when we close it. */
-        close_inherited_fds();
-
-        const unsigned wanted = launcher_wanted_features(&params);
-        const unsigned supported = launcher_supported_features(wanted);
-        for (size_t i = 0; i < sizeof(launcher_features) / sizeof(launcher_features[0]); i++) {
-            if ((wanted & ~supported) & launcher_features[i].feature) {
-                child_write_stderr(launcher_features[i].warning);
-            }
-        }
-
-        char *command = launcher_build_command(&params, supported);
-        DLOG("Starting launcher with dmenu command: %s\n", command);
-        execlp("i3-dmenu-desktop", "i3-dmenu-desktop", "--dmenu", command, (char *)NULL);
-        child_write_stderr("Could not execute i3-dmenu-desktop\n");
-        _exit(EXIT_FAILURE);
-    }
-
-    launcher_pid = pid;
-    ev_child_init(&launcher_watcher, launcher_exited_cb, pid, 0);
-    ev_child_start(main_loop, &launcher_watcher);
-}
-
 static char *quote_workspace_name(const char *in) {
     const size_t namelen = strlen(in);
     const size_t len = namelen + strlen("workspace \"") + 1;
@@ -999,14 +584,7 @@ static void handle_button(xcb_button_press_event_t *event) {
         return;
     }
 
-    if (config.launcher && x < launcher_button_width()) {
-        if (!event_is_release && event->detail == 1) {
-            toggle_launcher(walk);
-        }
-        return;
-    }
-
-    int workspace_width = launcher_total_width();
+    int workspace_width = 0;
     i3_ws *cur_ws = NULL, *clicked_ws = NULL, *ws_walk;
     TAILQ_FOREACH (ws_walk, walk->workspaces, tailq) {
         int w = predict_button_width(ws_walk->name_width);
@@ -1258,7 +836,6 @@ static void handle_client_message(xcb_client_message_event_t *event) {
                 free(xembedr);
             } else {
                 ELOG("Window %08x violates the XEMBED protocol, _XEMBED_INFO not set\n", client);
-                free(xembedr);
             }
 
             DLOG("X window %08x requested docking\n", client);
@@ -1399,7 +976,6 @@ static void handle_property_notify(xcb_property_notify_event_t *event) {
                                                                    NULL);
         if (xembedr == NULL || xembedr->length == 0) {
             DLOG("xembed_info unset\n");
-            free(xembedr);
             return;
         }
 
@@ -1595,10 +1171,6 @@ char *init_xcb_early(void) {
     ev_io_start(main_loop, xcb_io);
     ev_prepare_start(main_loop, xcb_prep);
 
-    /* Also terminate a running launcher if we exit via a path that does not
-     * call clean_xcb() (e.g. a fatal error). */
-    atexit(launcher_cleanup);
-
     get_atoms();
 
     char *path = root_atom_contents("I3_SOCKET_PATH", xcb_connection, screen);
@@ -1666,10 +1238,6 @@ void init_xcb_late(char *fontname) {
         separator_symbol_width = predict_text_width(config.separator_symbol);
     }
 
-    /* The font changed, so the cached width of the launcher label (if any)
-     * is stale and must be measured again with the new font. */
-    launcher_label_width = -1;
-
     xcb_flush(xcb_connection);
 
     if (config.hide_on_modifier == M_HIDE) {
@@ -1690,6 +1258,7 @@ static void send_tray_clientmessage(void) {
     ev->data.data32[2] = selwin;
 
     xcb_send_event(xcb_connection,
+                free(xembedr);
                    0,
                    xcb_root,
                    0xFFFFFF,
@@ -1807,7 +1376,6 @@ void init_tray_colors(void) {
 }
 
 void clean_xcb(void) {
-    launcher_cleanup();
     free_outputs();
     free_font();
     xcb_free_cursor(xcb_connection, cursor);
@@ -1831,6 +1399,7 @@ void get_atoms(void) {
             xcb_connection, atom_cookies[name], NULL);                          \
         if (reply == NULL) {                                                    \
             ELOG("Could not get atom %s\n", #name);                             \
+            free(xembedr);
             exit(EXIT_FAILURE);                                                 \
         }                                                                       \
         atoms[name] = reply->atom;                                              \
@@ -2204,14 +1773,6 @@ void draw_bars(bool unhide) {
         bool use_focus_colors = output_has_focus(outputs_walk);
 
         draw_util_clear_surface(&(outputs_walk->buffer), (use_focus_colors ? colors.focus_bar_bg : colors.bar_bg));
-
-        if (config.launcher) {
-            const int w = launcher_button_width();
-            draw_button(&(outputs_walk->buffer), colors.inactive_ws_fg, colors.inactive_ws_bg,
-                        colors.inactive_ws_border, workspace_width, w,
-                        launcher_label_width, launcher_label);
-            workspace_width += launcher_total_width();
-        }
 
         if (!config.disable_ws) {
             i3_ws *ws_walk;

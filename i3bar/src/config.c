@@ -207,20 +207,6 @@ static int config_string_cb(void *params_, const unsigned char *val, size_t _len
         return 1;
     }
 
-    if (!strcmp(cur_key, "launcher_background")) {
-        DLOG("launcher_background = %.*s\n", len, val);
-        FREE(config.launcher_background);
-        sasprintf(&config.launcher_background, "%.*s", len, val);
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_font")) {
-        DLOG("launcher_font = %.*s\n", len, val);
-        FREE(config.launcher_font);
-        sasprintf(&config.launcher_font, "%.*s", len, val);
-        return 1;
-    }
-
     if (!strcmp(cur_key, "separator_symbol")) {
         DLOG("separator = %.*s\n", len, val);
         I3STRING_FREE(config.separator_symbol);
@@ -306,30 +292,6 @@ static int config_boolean_cb(void *params_, int val) {
     if (!strcmp(cur_key, "binding_mode_indicator")) {
         DLOG("binding_mode_indicator = %d\n", val);
         config.disable_binding_mode_indicator = !val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_button")) {
-        DLOG("launcher_button = %d\n", val);
-        config.launcher = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_click_away")) {
-        DLOG("launcher_click_away = %d\n", val);
-        config.launcher_click_away = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_separators")) {
-        DLOG("launcher_separators = %d\n", val);
-        config.launcher_separators = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_dynamic_resize")) {
-        DLOG("launcher_dynamic_resize = %d\n", val);
-        config.launcher_dynamic_resize = val;
         return 1;
     }
 
@@ -421,36 +383,6 @@ static int config_integer_cb(void *params_, long long val) {
         return 1;
     }
 
-    if (!strcmp(cur_key, "launcher_lines")) {
-        DLOG("launcher_lines = %lld\n", val);
-        config.launcher_lines = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_prompt_padding")) {
-        DLOG("launcher_prompt_padding = %lld\n", val);
-        config.launcher_prompt_padding = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_padding")) {
-        DLOG("launcher_padding = %lld\n", val);
-        config.launcher_padding = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_border")) {
-        DLOG("launcher_border = %lld\n", val);
-        config.launcher_border = val;
-        return 1;
-    }
-
-    if (!strcmp(cur_key, "launcher_width")) {
-        DLOG("launcher_width = %lld\n", val);
-        config.launcher_width = val;
-        return 1;
-    }
-
     if (!strcmp(cur_key, "workspace_min_width")) {
         DLOG("workspace_min_width = %lld\n", val);
         config.ws_min_width = val;
@@ -475,30 +407,6 @@ static yajl_callbacks outputs_callbacks = {
  *
  */
 void parse_config_json(const unsigned char *json, size_t size) {
-    /* This function is called again on barconfig_update events, so free
-     * the values of the previous configuration first. */
-    for (int c = 0; c < config.num_outputs; c++) {
-        FREE(config.outputs[c]);
-    }
-    FREE(config.outputs);
-    config.num_outputs = 0;
-
-    binding_t *binding;
-    while (!TAILQ_EMPTY(&(config.bindings))) {
-        binding = TAILQ_FIRST(&(config.bindings));
-        FREE(binding->command);
-        TAILQ_REMOVE(&(config.bindings), binding, bindings);
-        free(binding);
-    }
-
-    tray_output_t *tray_output;
-    while (!TAILQ_EMPTY(&(config.tray_outputs))) {
-        tray_output = TAILQ_FIRST(&(config.tray_outputs));
-        FREE(tray_output->output);
-        TAILQ_REMOVE(&(config.tray_outputs), tray_output, tray_outputs);
-        free(tray_output);
-    }
-
     TAILQ_INIT(&(config.bindings));
     TAILQ_INIT(&(config.tray_outputs));
 
@@ -567,6 +475,30 @@ void free_colors(struct xcb_color_strings_t *colors) {
     FREE_COLOR(urgent_ws_fg);
     FREE_COLOR(urgent_ws_bg);
     FREE_COLOR(urgent_ws_border);
+    /* This function is called again on barconfig_update events, so free
+     * the values of the previous configuration first. */
+    for (int c = 0; c < config.num_outputs; c++) {
+        FREE(config.outputs[c]);
+    }
+    FREE(config.outputs);
+    config.num_outputs = 0;
+
+    binding_t *binding;
+    while (!TAILQ_EMPTY(&(config.bindings))) {
+        binding = TAILQ_FIRST(&(config.bindings));
+        FREE(binding->command);
+        TAILQ_REMOVE(&(config.bindings), binding, bindings);
+        free(binding);
+    }
+
+    tray_output_t *tray_output;
+    while (!TAILQ_EMPTY(&(config.tray_outputs))) {
+        tray_output = TAILQ_FIRST(&(config.tray_outputs));
+        FREE(tray_output->output);
+        TAILQ_REMOVE(&(config.tray_outputs), tray_output, tray_outputs);
+        free(tray_output);
+    }
+
     FREE_COLOR(focus_ws_fg);
     FREE_COLOR(focus_ws_bg);
     FREE_COLOR(focus_ws_border);
