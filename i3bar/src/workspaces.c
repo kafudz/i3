@@ -227,7 +227,7 @@ static int workspaces_end_map_cb(void *params_) {
         TAILQ_INSERT_TAIL(ws->output->workspaces, ws, tailq);
     } else {
         /* Critical fallback failure: clean up to prevent memory leaks or crashes */
-        ELOG("Critical: No valid output found for workspace '%s'. Discarding.\n", 
+        ELOG("Critical: No valid output found for workspace '%s'. Discarding.\n",
              ws->canonical_name ? ws->canonical_name : "unknown");
         I3STRING_FREE(ws->name);
         FREE(ws->canonical_name);

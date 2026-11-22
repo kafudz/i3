@@ -18,13 +18,13 @@ NOTES
 
 My personal fork of [i3](https://github.com/i3/i3), a tiling window manager for X11.
 
-This fork is kept for **my own use**. It follows upstream's `next` branch.  
+This fork is kept for **my own use**. It follows upstream's `next` branch.
 Everything not listed below is upstream code; the notes here are mine and are not part of upstream's documentation.
 
 ## Personal use
 
-This repo is for **my own setup**.  
-It is not a general-purpose project, and I don’t guarantee it will work on your machine.  
+This repo is for **my own setup**.
+It is not a general-purpose project, and I don’t guarantee it will work on your machine.
 Feel free to read/copy it, but expect to edit the source for your own system.
 
 ## What’s different
